@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+
+{% block title %}Đăng ký - {{ super() }}{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-8 col-lg-6">
+        <div class="text-center mb-4">
+            <h2>
+                <i class="fas fa-user-plus me-2"></i>
+                Chọn loại tài khoản
+            </h2>
+            <p class="text-muted">Vui lòng chọn loại tài khoản phù hợp với bạn</p>
+        </div>
+        
+        <div class="row">
+            <!-- Đăng ký sinh viên -->
+            <div class="col-md-6 mb-4">
+                <div class="card h-100 border-primary">
+                    <div class="card-body text-center">
+                        <div class="mb-3">
+                            <i class="fas fa-graduation-cap fa-4x text-primary"></i>
+                        </div>
+                        <h4 class="card-title text-primary">Sinh viên</h4>
+                        <p class="card-text">
+                            Dành cho sinh viên muốn tìm kiếm thông tin về:
+                        </p>
+                        <ul class="list-unstyled text-start">
+                            <li><i class="fas fa-check text-success me-2"></i>Quy chế học tập & rèn luyện</li>
+                            <li><i class="fas fa-check text-success me-2"></i>Học phí & Chính sách hỗ trợ</li>
+                            <li><i class="fas fa-check text-success me-2"></i>Hoạt động Đoàn - Hội, CLB</li>
+                            <li><i class="fas fa-check text-success me-2"></i>Hoạt động sinh viên</li>
+                            <li><i class="fas fa-check text-success me-2"></i>Dịch vụ & Tiện ích</li>
+                        </ul>
+                        <div class="mt-auto">
+                            <a href="{{ url_for('register_student') }}" class="btn btn-primary btn-lg">
+                                <i class="fas fa-user-graduate me-2"></i>
+                                Đăng ký Sinh viên
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Đăng ký giáo viên -->
+            <div class="col-md-6 mb-4">
+                <div class="card h-100 border-warning">
+                    <div class="card-body text-center">
+                        <div class="mb-3">
+                            <i class="fas fa-chalkboard-teacher fa-4x text-warning"></i>
+                        </div>
+                        <h4 class="card-title text-warning">Giáo viên</h4>
+                        <p class="card-text">
+                            Dành cho giáo viên, cán bộ với quyền:
+                        </p>
+                        <ul class="list-unstyled text-start">
+                            <li><i class="fas fa-check text-success me-2"></i>Tìm kiếm thông tin</li>
+                            <li><i class="fas fa-check text-success me-2"></i>Quản lý người dùng</li>
+                            <li><i class="fas fa-check text-success me-2"></i>Cập nhật thông tin</li>
+                            <li><i class="fas fa-check text-success me-2"></i>Upload tài liệu PDF</li>
+                            <li><i class="fas fa-check text-success me-2"></i>Xem thống kê</li>
+                        </ul>
+                        <div class="mt-auto">
+                            <a href="{{ url_for('register_teacher') }}" class="btn btn-warning btn-lg">
+                                <i class="fas fa-user-tie me-2"></i>
+                                Đăng ký Giáo viên
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="text-center mt-4">
+            <p class="text-muted">
+                Đã có tài khoản? 
+                <a href="{{ url_for('login') }}" class="text-decoration-none">
+                    <i class="fas fa-sign-in-alt me-1"></i>
+                    Đăng nhập ngay
+                </a>
+            </p>
+        </div>
+    </div>
+</div>
+{% endblock %}

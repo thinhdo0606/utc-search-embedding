@@ -1,0 +1,253 @@
+{% extends "base.html" %}
+
+{% block title %}Lịch sử tìm kiếm - {{ super() }}{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <div class="card shadow">
+            <div class="card-header bg-info text-white">
+                <h4 class="mb-0">
+                    <i class="fas fa-history me-2"></i>
+                    Lịch sử tìm kiếm của bạn
+                </h4>
+            </div>
+            <div class="card-body">
+                {% if history.items %}
+                    <div class="table-responsive">
+                        <table class="table table-hover">
+                            <thead class="table-light">
+                                <tr>
+                                    <th width="5%">#</th>
+                                    <th width="40%">Truy vấn</th>
+                                    <th width="15%">Nguồn</th>
+                                    <th width="15%">Kết quả</th>
+                                    <th width="25%">Thời gian</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for item in history.items %}
+                                <tr>
+                                    <td>{{ loop.index + (history.page - 1) * history.per_page }}</td>
+                                    <td>
+                                        <div class="query-text">
+                                            {{ item.query }}
+                                        </div>
+                                        {% if item.query|length > 50 %}
+                                        <small class="text-muted">
+                                            <i class="fas fa-info-circle me-1"></i>
+                                            Click để xem đầy đủ
+                                        </small>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        {% if item.source == 'pdf' %}
+                                            <span class="badge bg-success">
+                                                <i class="fas fa-file-pdf me-1"></i>PDF
+                                            </span>
+                                        {% else %}
+                                            <span class="badge bg-primary">
+                                                <i class="fas fa-database me-1"></i>Mặc định
+                                            </span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        <span class="badge bg-{{ 'success' if item.results_count > 0 else 'warning' }}">
+                                            {{ item.results_count }} kết quả
+                                        </span>
+                                    </td>
+                                    <td>
+                                        <div class="text-nowrap">
+                                            <i class="fas fa-clock me-1 text-muted"></i>
+                                            {{ item.search_time.strftime('%d/%m/%Y %H:%M') }}
+                                        </div>
+                                        <small class="text-muted">
+                                            {{ moment(item.search_time).fromNow() if moment else '' }}
+                                        </small>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    
+                    <!-- Pagination -->
+                    {% if history.pages > 1 %}
+                    <nav aria-label="Phân trang lịch sử tìm kiếm">
+                        <ul class="pagination justify-content-center">
+                            {% if history.has_prev %}
+                                <li class="page-item">
+                                    <a class="page-link" href="{{ url_for('search_history', page=history.prev_num) }}">
+                                        <i class="fas fa-chevron-left"></i> Trước
+                                    </a>
+                                </li>
+                            {% endif %}
+                            
+                            {% for page_num in history.iter_pages() %}
+                                {% if page_num %}
+                                    {% if page_num != history.page %}
+                                        <li class="page-item">
+                                            <a class="page-link" href="{{ url_for('search_history', page=page_num) }}">{{ page_num }}</a>
+                                        </li>
+                                    {% else %}
+                                        <li class="page-item active">
+                                            <span class="page-link">{{ page_num }}</span>
+                                        </li>
+                                    {% endif %}
+                                {% else %}
+                                    <li class="page-item disabled">
+                                        <span class="page-link">...</span>
+                                    </li>
+                                {% endif %}
+                            {% endfor %}
+                            
+                            {% if history.has_next %}
+                                <li class="page-item">
+                                    <a class="page-link" href="{{ url_for('search_history', page=history.next_num) }}">
+                                        Sau <i class="fas fa-chevron-right"></i>
+                                    </a>
+                                </li>
+                            {% endif %}
+                        </ul>
+                    </nav>
+                    {% endif %}
+                    
+                    <!-- Thống kê -->
+                    <div class="row mt-4">
+                        <div class="col-md-3">
+                            <div class="text-center p-3 bg-light rounded">
+                                <h5 class="text-primary">{{ history.total }}</h5>
+                                <small class="text-muted">Tổng tìm kiếm</small>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="text-center p-3 bg-light rounded">
+                                <h5 class="text-success">{{ history.items|selectattr('source', 'eq', 'default')|list|length }}</h5>
+                                <small class="text-muted">Tìm kiếm mặc định</small>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="text-center p-3 bg-light rounded">
+                                <h5 class="text-info">{{ history.items|selectattr('source', 'eq', 'pdf')|list|length }}</h5>
+                                <small class="text-muted">Tìm kiếm PDF</small>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="text-center p-3 bg-light rounded">
+                                <h5 class="text-warning">{{ (history.items|map(attribute='results_count')|sum) }}</h5>
+                                <small class="text-muted">Tổng kết quả</small>
+                            </div>
+                        </div>
+                    </div>
+                {% else %}
+                    <div class="text-center py-5">
+                        <div class="mb-4">
+                            <i class="fas fa-search fa-4x text-muted"></i>
+                        </div>
+                        <h5 class="text-muted">Chưa có lịch sử tìm kiếm</h5>
+                        <p class="text-muted mb-4">
+                            Bạn chưa thực hiện tìm kiếm nào. Hãy bắt đầu tìm kiếm để xem lịch sử tại đây.
+                        </p>
+                        <a href="{{ url_for('index') }}" class="btn btn-primary">
+                            <i class="fas fa-search me-2"></i>
+                            Bắt đầu tìm kiếm
+                        </a>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal xem chi tiết truy vấn -->
+<div class="modal fade" id="queryDetailModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="fas fa-search me-2"></i>
+                    Chi tiết truy vấn
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p id="fullQueryText"></p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Đóng</button>
+                <button type="button" class="btn btn-primary" id="searchAgainBtn">
+                    <i class="fas fa-redo me-1"></i>
+                    Tìm kiếm lại
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+.query-text {
+    max-width: 300px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    cursor: pointer;
+}
+
+.query-text:hover {
+    color: #0d6efd;
+    text-decoration: underline;
+}
+
+.table-responsive {
+    border-radius: 0.375rem;
+}
+
+.table th {
+    border-top: none;
+    font-weight: 600;
+    color: #495057;
+}
+
+.pagination .page-link {
+    color: #0d6efd;
+}
+
+.pagination .page-item.active .page-link {
+    background-color: #0d6efd;
+    border-color: #0d6efd;
+}
+</style>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Click vào query text để xem chi tiết
+    const queryTexts = document.querySelectorAll('.query-text');
+    const modal = new bootstrap.Modal(document.getElementById('queryDetailModal'));
+    const fullQueryText = document.getElementById('fullQueryText');
+    const searchAgainBtn = document.getElementById('searchAgainBtn');
+    let currentQuery = '';
+    
+    queryTexts.forEach(function(element) {
+        element.addEventListener('click', function() {
+            currentQuery = this.textContent.trim();
+            fullQueryText.textContent = currentQuery;
+            modal.show();
+        });
+    });
+    
+    // Tìm kiếm lại
+    searchAgainBtn.addEventListener('click', function() {
+        if (currentQuery) {
+            // Chuyển về trang chủ và điền query
+            const url = new URL('{{ url_for("index") }}', window.location.origin);
+            url.searchParams.set('q', currentQuery);
+            window.location.href = url.href;
+        }
+    });
+});
+</script>
+{% endblock %}

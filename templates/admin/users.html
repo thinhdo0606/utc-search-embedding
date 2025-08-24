@@ -1,0 +1,540 @@
+{% extends "base.html" %}
+
+{% block title %}Quản lý người dùng - {{ super() }}{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <div class="card shadow">
+            <div class="card-header bg-warning text-dark">
+                <h4 class="mb-0">
+                    <i class="fas fa-users me-2"></i>
+                    Quản lý người dùng
+                    <span class="badge bg-dark ms-2">Chỉ dành cho Admin</span>
+                </h4>
+            </div>
+            <div class="card-body">
+                {% if users.items %}
+                    <!-- Thống kê tổng quan -->
+                    <div class="row mb-4">
+                        <div class="col-md-3">
+                            <div class="card bg-primary text-white">
+                                <div class="card-body text-center">
+                                    <h3>{{ users.total }}</h3>
+                                    <p class="mb-0">Tổng người dùng</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="card bg-info text-white">
+                                <div class="card-body text-center">
+                                    <h3>{{ users.items|selectattr('role', 'eq', 'student')|list|length }}</h3>
+                                    <p class="mb-0">Sinh viên</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="card bg-warning text-dark">
+                                <div class="card-body text-center">
+                                    <h3>{{ users.items|selectattr('role', 'eq', 'teacher')|list|length }}</h3>
+                                    <p class="mb-0">Giáo viên</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="card bg-success text-white">
+                                <div class="card-body text-center">
+                                    <h3>{{ users.items|selectattr('is_active', 'eq', true)|list|length }}</h3>
+                                    <p class="mb-0">Đang hoạt động</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Bảng danh sách người dùng -->
+                    <div class="table-responsive">
+                        <table class="table table-hover">
+                            <thead class="table-dark">
+                                <tr>
+                                    <th width="5%">#</th>
+                                    <th width="20%">Thông tin</th>
+                                    <th width="15%">Loại</th>
+                                    <th width="20%">Mã số</th>
+                                    <th width="15%">Trạng thái</th>
+                                    <th width="15%">Tham gia</th>
+                                    <th width="10%">Thao tác</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for user in users.items %}
+                                <tr class="{{ 'table-warning' if not user.is_active else '' }}">
+                                    <td>{{ loop.index + (users.page - 1) * users.per_page }}</td>
+                                    <td>
+                                        <div class="d-flex align-items-center">
+                                            <div class="avatar-sm bg-{{ 'warning' if user.is_teacher() else 'primary' }} text-white rounded-circle me-2 d-flex align-items-center justify-content-center">
+                                                <i class="fas fa-{{ 'chalkboard-teacher' if user.is_teacher() else 'graduation-cap' }}"></i>
+                                            </div>
+                                            <div>
+                                                <div class="fw-bold">{{ user.full_name }}</div>
+                                                <small class="text-muted">{{ user.username }}</small><br>
+                                                <small class="text-muted">{{ user.email }}</small>
+                                            </div>
+                                        </div>
+                                    </td>
+                                    <td>
+                                        {% if user.is_teacher() %}
+                                            <span class="badge bg-warning text-dark">
+                                                <i class="fas fa-chalkboard-teacher me-1"></i>Giáo viên
+                                            </span>
+                                        {% else %}
+                                            <span class="badge bg-primary">
+                                                <i class="fas fa-graduation-cap me-1"></i>Sinh viên
+                                            </span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        {% if user.is_student() %}
+                                            <div>
+                                                <strong>MSV:</strong> {{ user.student_id }}<br>
+                                                <small class="text-muted">{{ user.major }}</small><br>
+                                                <small class="text-muted">Năm {{ user.year }}</small>
+                                            </div>
+                                        {% elif user.is_teacher() %}
+                                            <div>
+                                                <strong>MGV:</strong> {{ user.teacher_id }}<br>
+                                                <small class="text-muted">{{ user.department }}</small><br>
+                                                <small class="text-muted">
+                                                    {% if user.position == 'giang_vien' %}Giảng viên
+                                                    {% elif user.position == 'pho_giao_su' %}Phó Giáo sư
+                                                    {% elif user.position == 'giao_su' %}Giáo sư
+                                                    {% elif user.position == 'truong_khoa' %}Trưởng khoa
+                                                    {% elif user.position == 'pho_truong_khoa' %}Phó Trưởng khoa
+                                                    {% elif user.position == 'truong_bo_mon' %}Trưởng bộ môn
+                                                    {% else %}{{ user.position }}{% endif %}
+                                                </small>
+                                            </div>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        {% if user.is_active %}
+                                            <span class="badge bg-success">
+                                                <i class="fas fa-check me-1"></i>Hoạt động
+                                            </span>
+                                        {% else %}
+                                            <span class="badge bg-danger">
+                                                <i class="fas fa-times me-1"></i>Vô hiệu hóa
+                                            </span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        <div class="text-nowrap">
+                                            {{ user.created_at.strftime('%d/%m/%Y') if user.created_at else 'N/A' }}
+                                        </div>
+                                        {% if user.last_login %}
+                                        <small class="text-muted">
+                                            Đăng nhập: {{ user.last_login.strftime('%d/%m') }}
+                                        </small>
+                                        {% else %}
+                                        <small class="text-muted">Chưa đăng nhập</small>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        <div class="btn-group btn-group-sm" role="group">
+                                            <button type="button" 
+                                                    class="btn btn-outline-info btn-sm" 
+                                                    data-bs-toggle="modal" 
+                                                    data-bs-target="#userDetailModal"
+                                                    data-user-id="{{ user.id }}"
+                                                    title="Xem chi tiết">
+                                                <i class="fas fa-eye"></i>
+                                            </button>
+                                            {% if user.id != current_user.id %}
+                                            <button type="button" 
+                                                    class="btn btn-outline-{{ 'success' if not user.is_active else 'warning' }} btn-sm toggle-user-btn"
+                                                    data-user-id="{{ user.id }}"
+                                                    data-current-status="{{ user.is_active }}"
+                                                    title="{{ 'Kích hoạt' if not user.is_active else 'Vô hiệu hóa' }}">
+                                                <i class="fas fa-{{ 'check' if not user.is_active else 'ban' }}"></i>
+                                            </button>
+                                            {% endif %}
+                                        </div>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    
+                    <!-- Pagination -->
+                    {% if users.pages > 1 %}
+                    <nav aria-label="Phân trang người dùng">
+                        <ul class="pagination justify-content-center">
+                            {% if users.has_prev %}
+                                <li class="page-item">
+                                    <a class="page-link" href="{{ url_for('admin_users', page=users.prev_num) }}">
+                                        <i class="fas fa-chevron-left"></i> Trước
+                                    </a>
+                                </li>
+                            {% endif %}
+                            
+                            {% for page_num in users.iter_pages() %}
+                                {% if page_num %}
+                                    {% if page_num != users.page %}
+                                        <li class="page-item">
+                                            <a class="page-link" href="{{ url_for('admin_users', page=page_num) }}">{{ page_num }}</a>
+                                        </li>
+                                    {% else %}
+                                        <li class="page-item active">
+                                            <span class="page-link">{{ page_num }}</span>
+                                        </li>
+                                    {% endif %}
+                                {% else %}
+                                    <li class="page-item disabled">
+                                        <span class="page-link">...</span>
+                                    </li>
+                                {% endif %}
+                            {% endfor %}
+                            
+                            {% if users.has_next %}
+                                <li class="page-item">
+                                    <a class="page-link" href="{{ url_for('admin_users', page=users.next_num) }}">
+                                        Sau <i class="fas fa-chevron-right"></i>
+                                    </a>
+                                </li>
+                            {% endif %}
+                        </ul>
+                    </nav>
+                    {% endif %}
+                    
+                {% else %}
+                    <div class="text-center py-5">
+                        <div class="mb-4">
+                            <i class="fas fa-users fa-4x text-muted"></i>
+                        </div>
+                        <h5 class="text-muted">Chưa có người dùng nào</h5>
+                        <p class="text-muted">
+                            Hệ thống chưa có người dùng nào đăng ký.
+                        </p>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal chi tiết người dùng -->
+<div class="modal fade" id="userDetailModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="fas fa-user me-2"></i>
+                    Chi tiết người dùng
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div id="userDetailContent">
+                    <div class="text-center">
+                        <div class="spinner-border" role="status">
+                            <span class="visually-hidden">Đang tải...</span>
+                        </div>
+                        <p class="mt-2">Đang tải thông tin...</p>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Đóng</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+.avatar-sm {
+    width: 40px;
+    height: 40px;
+    font-size: 16px;
+}
+
+.table th {
+    border-top: none;
+    font-weight: 600;
+    color: #495057;
+}
+
+.btn-group-sm .btn {
+    font-size: 12px;
+}
+
+.card {
+    transition: transform 0.2s;
+}
+
+.card:hover {
+    transform: translateY(-2px);
+}
+</style>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// Chi tiết người dùng
+document.getElementById('userDetailModal').addEventListener('show.bs.modal', function(event) {
+    const button = event.relatedTarget;
+    const userId = button.getAttribute('data-user-id');
+    const content = document.getElementById('userDetailContent');
+    
+    // Reset content
+    content.innerHTML = `
+        <div class="text-center">
+            <div class="spinner-border" role="status">
+                <span class="visually-hidden">Đang tải...</span>
+            </div>
+            <p class="mt-2">Đang tải thông tin...</p>
+        </div>
+    `;
+    
+    // Load chi tiết người dùng qua AJAX
+    fetch(`/admin/user/${userId}`)
+        .then(response => response.json())
+        .then(data => {
+            if (data.error) {
+                content.innerHTML = `<div class="alert alert-danger">${data.error}</div>`;
+                return;
+            }
+            
+            // Hiển thị thông tin chi tiết
+            const roleText = data.role === 'student' ? 'Sinh viên' : 'Giáo viên';
+            const statusText = data.is_active ? 'Hoạt động' : 'Vô hiệu hóa';
+            const statusClass = data.is_active ? 'text-success' : 'text-danger';
+            const approvalText = data.approval_status === 'approved' ? 'Đã phê duyệt' : 
+                                data.approval_status === 'pending' ? 'Chờ phê duyệt' : 'Đã từ chối';
+            
+            content.innerHTML = `
+                <div class="row">
+                    <!-- Thông tin cơ bản -->
+                    <div class="col-md-6">
+                        <div class="card h-100">
+                            <div class="card-header bg-primary text-white">
+                                <h6 class="mb-0"><i class="fas fa-user me-2"></i>Thông tin cơ bản</h6>
+                            </div>
+                            <div class="card-body">
+                                <table class="table table-borderless table-sm">
+                                    <tr>
+                                        <td width="40%"><strong>Họ và tên:</strong></td>
+                                        <td>${data.full_name}</td>
+                                    </tr>
+                                    <tr>
+                                        <td><strong>Tên đăng nhập:</strong></td>
+                                        <td><code>${data.username}</code></td>
+                                    </tr>
+                                    <tr>
+                                        <td><strong>Email:</strong></td>
+                                        <td>${data.email}</td>
+                                    </tr>
+                                    <tr>
+                                        <td><strong>Vai trò:</strong></td>
+                                        <td><span class="badge bg-${data.role === 'student' ? 'primary' : 'warning text-dark'}">${roleText}</span></td>
+                                    </tr>
+                                    <tr>
+                                        <td><strong>Trạng thái:</strong></td>
+                                        <td><span class="${statusClass}"><i class="fas fa-${data.is_active ? 'check-circle' : 'times-circle'} me-1"></i>${statusText}</span></td>
+                                    </tr>
+                                    ${data.role === 'teacher' ? `
+                                    <tr>
+                                        <td><strong>Phê duyệt:</strong></td>
+                                        <td><span class="badge bg-${data.approval_status === 'approved' ? 'success' : data.approval_status === 'pending' ? 'warning' : 'danger'}">${approvalText}</span></td>
+                                    </tr>
+                                    ` : ''}
+                                    <tr>
+                                        <td><strong>Ngày tham gia:</strong></td>
+                                        <td>${new Date(data.created_at).toLocaleDateString('vi-VN')}</td>
+                                    </tr>
+                                    <tr>
+                                        <td><strong>Đăng nhập cuối:</strong></td>
+                                        <td>${data.last_login ? new Date(data.last_login).toLocaleString('vi-VN') : 'Chưa đăng nhập'}</td>
+                                    </tr>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Thông tin chuyên ngành -->
+                    <div class="col-md-6">
+                        <div class="card h-100">
+                            <div class="card-header bg-info text-white">
+                                <h6 class="mb-0"><i class="fas fa-${data.role === 'student' ? 'graduation-cap' : 'chalkboard-teacher'} me-2"></i>Thông tin ${roleText.toLowerCase()}</h6>
+                            </div>
+                            <div class="card-body">
+                                ${data.role === 'student' ? `
+                                <table class="table table-borderless table-sm">
+                                    <tr>
+                                        <td width="40%"><strong>Mã sinh viên:</strong></td>
+                                        <td><code>${data.student_id || 'N/A'}</code></td>
+                                    </tr>
+                                    <tr>
+                                        <td><strong>Ngành học:</strong></td>
+                                        <td>${data.major || 'N/A'}</td>
+                                    </tr>
+                                    <tr>
+                                        <td><strong>Năm học:</strong></td>
+                                        <td>${data.year || 'N/A'}</td>
+                                    </tr>
+                                </table>
+                                ` : `
+                                <table class="table table-borderless table-sm">
+                                    <tr>
+                                        <td width="40%"><strong>Mã giáo viên:</strong></td>
+                                        <td><code>${data.teacher_id || 'N/A'}</code></td>
+                                    </tr>
+                                    <tr>
+                                        <td><strong>Khoa/Bộ môn:</strong></td>
+                                        <td>${data.department || 'N/A'}</td>
+                                    </tr>
+                                    <tr>
+                                        <td><strong>Chức vụ:</strong></td>
+                                        <td>${getPositionText(data.position)}</td>
+                                    </tr>
+                                </table>
+                                `}
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Thống kê hoạt động -->
+                    <div class="col-12 mt-3">
+                        <div class="card">
+                            <div class="card-header bg-success text-white">
+                                <h6 class="mb-0"><i class="fas fa-chart-bar me-2"></i>Thống kê hoạt động</h6>
+                            </div>
+                            <div class="card-body">
+                                <div class="row">
+                                    <div class="col-md-4">
+                                        <div class="text-center">
+                                            <h3 class="text-primary">${data.search_statistics?.total_searches || 0}</h3>
+                                            <p class="mb-0">Tổng số lần tìm kiếm</p>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-8">
+                                        <h6>Lịch sử tìm kiếm gần đây:</h6>
+                                        ${data.search_statistics?.recent_searches?.length > 0 ? `
+                                            <div class="table-responsive">
+                                                <table class="table table-sm">
+                                                    <thead>
+                                                        <tr>
+                                                            <th>Truy vấn</th>
+                                                            <th>Nguồn</th>
+                                                            <th>Kết quả</th>
+                                                            <th>Thời gian</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody>
+                                                        ${data.search_statistics.recent_searches.map(search => `
+                                                            <tr>
+                                                                <td><code>${search.query}</code></td>
+                                                                <td><span class="badge bg-secondary">${search.source}</span></td>
+                                                                <td>${search.results_count}</td>
+                                                                <td>${new Date(search.search_time).toLocaleString('vi-VN')}</td>
+                                                            </tr>
+                                                        `).join('')}
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        ` : '<p class="text-muted">Chưa có hoạt động tìm kiếm nào.</p>'}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            content.innerHTML = '<div class="alert alert-danger">Có lỗi xảy ra khi tải thông tin người dùng.</div>';
+        });
+});
+
+// Helper function để convert position
+function getPositionText(position) {
+    const positions = {
+        'giang_vien': 'Giảng viên',
+        'pho_giao_su': 'Phó Giáo sư',
+        'giao_su': 'Giáo sư',
+        'truong_khoa': 'Trưởng khoa',
+        'pho_truong_khoa': 'Phó Trưởng khoa',
+        'truong_bo_mon': 'Trưởng bộ môn',
+        'khac': 'Khác'
+    };
+    return positions[position] || position || 'N/A';
+}
+
+// Toggle trạng thái người dùng
+document.addEventListener('DOMContentLoaded', function() {
+    // Event listener cho các nút toggle user status
+    document.querySelectorAll('.toggle-user-btn').forEach(button => {
+        button.addEventListener('click', function() {
+            const userId = this.getAttribute('data-user-id');
+            const currentStatus = this.getAttribute('data-current-status') === 'True';
+            
+            toggleUserStatus(userId, currentStatus);
+        });
+    });
+});
+
+function toggleUserStatus(userId, currentStatus) {
+    const action = currentStatus ? 'vô hiệu hóa' : 'kích hoạt';
+    
+    if (confirm(`Bạn có chắc muốn ${action} người dùng này?`)) {
+        fetch(`/admin/toggle_user_status/${userId}`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                showAlert(data.message, 'success');
+                // Reload trang để cập nhật UI
+                setTimeout(() => {
+                    location.reload();
+                }, 1500);
+            } else {
+                showAlert(data.error, 'error');
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            showAlert('Có lỗi xảy ra khi thay đổi trạng thái người dùng', 'error');
+        });
+    }
+}
+
+// Helper function để hiển thị alert
+function showAlert(message, type) {
+    const alertClass = type === 'success' ? 'alert-success' : 'alert-danger';
+    const alertHtml = `
+        <div class="alert ${alertClass} alert-dismissible fade show" role="alert">
+            ${message}
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+    `;
+    
+    // Insert alert at the top of the container
+    const container = document.querySelector('.container');
+    container.insertAdjacentHTML('afterbegin', alertHtml);
+    
+    // Auto-dismiss after 5 seconds
+    setTimeout(() => {
+        const alert = container.querySelector('.alert');
+        if (alert) {
+            alert.remove();
+        }
+    }, 5000);
+}
+</script>
+{% endblock %}

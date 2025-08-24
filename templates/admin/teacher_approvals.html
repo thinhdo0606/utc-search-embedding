@@ -1,0 +1,381 @@
+{% extends "base.html" %}
+
+{% block title %}Phê duyệt tài khoản giáo viên{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="row">
+        <div class="col-md-12">
+            <h2 class="mb-4">
+                <i class="fas fa-user-check"></i> Phê duyệt tài khoản giáo viên
+            </h2>
+            
+            <!-- Tab Navigation -->
+            <ul class="nav nav-tabs mb-4">
+                <li class="nav-item">
+                    <a class="nav-link {% if status_filter == 'pending' %}active{% endif %}" 
+                       href="{{ url_for('admin_teacher_approvals', status='pending') }}">
+                        <i class="fas fa-clock"></i> Chờ phê duyệt 
+                        {% if counts.pending > 0 %}
+                            <span class="badge badge-warning">{{ counts.pending }}</span>
+                        {% endif %}
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link {% if status_filter == 'approved' %}active{% endif %}" 
+                       href="{{ url_for('admin_teacher_approvals', status='approved') }}">
+                        <i class="fas fa-check-circle"></i> Đã phê duyệt
+                        {% if counts.approved > 0 %}
+                            <span class="badge badge-success">{{ counts.approved }}</span>
+                        {% endif %}
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link {% if status_filter == 'rejected' %}active{% endif %}" 
+                       href="{{ url_for('admin_teacher_approvals', status='rejected') }}">
+                        <i class="fas fa-times-circle"></i> Đã từ chối
+                        {% if counts.rejected > 0 %}
+                            <span class="badge badge-danger">{{ counts.rejected }}</span>
+                        {% endif %}
+                    </a>
+                </li>
+            </ul>
+
+            {% if teachers.items %}
+                <div class="card">
+                    <div class="card-body">
+                        <div class="table-responsive">
+                            <table class="table table-striped">
+                                <thead>
+                                    <tr>
+                                        <th>Họ tên</th>
+                                        <th>Email</th>
+                                        <th>Mã giáo viên</th>
+                                        <th>Khoa/Bộ môn</th>
+                                        <th>Chức vụ</th>
+                                        <th>Ngày đăng ký</th>
+                                        <th>Trạng thái</th>
+                                        <th>Thao tác</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for teacher in teachers.items %}
+                                    <tr id="teacher-row-{{ teacher.id }}">
+                                        <td>
+                                            <strong>{{ teacher.full_name }}</strong><br>
+                                            <small class="text-muted">{{ teacher.username }}</small>
+                                        </td>
+                                        <td>{{ teacher.email }}</td>
+                                        <td>
+                                            <span class="badge badge-info">{{ teacher.teacher_id }}</span>
+                                        </td>
+                                        <td>{{ teacher.department }}</td>
+                                        <td>
+                                            {% if teacher.position == 'giang_vien' %}Giảng viên
+                                            {% elif teacher.position == 'pho_giao_su' %}Phó Giáo sư
+                                            {% elif teacher.position == 'giao_su' %}Giáo sư
+                                            {% elif teacher.position == 'truong_khoa' %}Trưởng khoa
+                                            {% elif teacher.position == 'pho_truong_khoa' %}Phó Trưởng khoa
+                                            {% elif teacher.position == 'truong_bo_mon' %}Trưởng bộ môn
+                                            {% else %}{{ teacher.position }}
+                                            {% endif %}
+                                        </td>
+                                        <td>
+                                            {{ teacher.created_at.strftime('%d/%m/%Y %H:%M') if teacher.created_at else 'N/A' }}
+                                        </td>
+                                        <td>
+                                            <span id="status-badge-{{ teacher.id }}" class="badge 
+                                                {% if teacher.approval_status == 'pending' %}badge-warning
+                                                {% elif teacher.approval_status == 'approved' %}badge-success
+                                                {% elif teacher.approval_status == 'rejected' %}badge-danger
+                                                {% endif %}">
+                                                {% if teacher.approval_status == 'pending' %}Chờ phê duyệt
+                                                {% elif teacher.approval_status == 'approved' %}Đã phê duyệt
+                                                {% elif teacher.approval_status == 'rejected' %}Đã từ chối
+                                                {% endif %}
+                                            </span>
+                                        </td>
+                                        <td>
+                                            <div class="btn-group" role="group">
+                                                {% if teacher.approval_status == 'pending' %}
+                                                    <button type="button" class="btn btn-sm btn-success" 
+                                                            onclick="approveTeacher({{ teacher.id }})"
+                                                            title="Phê duyệt">
+                                                        <i class="fas fa-check"></i>
+                                                    </button>
+                                                    <button type="button" class="btn btn-sm btn-danger" 
+                                                            onclick="rejectTeacher({{ teacher.id }})"
+                                                            title="Từ chối">
+                                                        <i class="fas fa-times"></i>
+                                                    </button>
+                                                {% else %}
+                                                    <button type="button" class="btn btn-sm btn-warning" 
+                                                            onclick="resetTeacherStatus({{ teacher.id }})"
+                                                            title="Reset về chờ phê duyệt">
+                                                        <i class="fas fa-undo"></i>
+                                                    </button>
+                                                {% endif %}
+                                                
+                                                <button type="button" class="btn btn-sm btn-info" 
+                                                        onclick="viewTeacherDetails({{ teacher.id }})"
+                                                        title="Xem chi tiết">
+                                                    <i class="fas fa-eye"></i>
+                                                </button>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Pagination -->
+                {% if teachers.pages > 1 %}
+                <nav aria-label="Phân trang">
+                    <ul class="pagination justify-content-center mt-4">
+                        {% if teachers.has_prev %}
+                            <li class="page-item">
+                                <a class="page-link" href="{{ url_for('admin_teacher_approvals', page=teachers.prev_num, status=status_filter) }}">
+                                    <i class="fas fa-chevron-left"></i>
+                                </a>
+                            </li>
+                        {% endif %}
+                        
+                        {% for page_num in teachers.iter_pages() %}
+                            {% if page_num %}
+                                {% if page_num != teachers.page %}
+                                    <li class="page-item">
+                                        <a class="page-link" href="{{ url_for('admin_teacher_approvals', page=page_num, status=status_filter) }}">{{ page_num }}</a>
+                                    </li>
+                                {% else %}
+                                    <li class="page-item active">
+                                        <span class="page-link">{{ page_num }}</span>
+                                    </li>
+                                {% endif %}
+                            {% else %}
+                                <li class="page-item disabled">
+                                    <span class="page-link">...</span>
+                                </li>
+                            {% endif %}
+                        {% endfor %}
+                        
+                        {% if teachers.has_next %}
+                            <li class="page-item">
+                                <a class="page-link" href="{{ url_for('admin_teacher_approvals', page=teachers.next_num, status=status_filter) }}">
+                                    <i class="fas fa-chevron-right"></i>
+                                </a>
+                            </li>
+                        {% endif %}
+                    </ul>
+                </nav>
+                {% endif %}
+            {% else %}
+                <div class="alert alert-info text-center">
+                    <i class="fas fa-info-circle"></i>
+                    {% if status_filter == 'pending' %}
+                        Không có tài khoản giáo viên nào chờ phê duyệt.
+                    {% elif status_filter == 'approved' %}
+                        Không có tài khoản giáo viên nào đã được phê duyệt.
+                    {% elif status_filter == 'rejected' %}
+                        Không có tài khoản giáo viên nào đã bị từ chối.
+                    {% endif %}
+                </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<!-- Teacher Details Modal -->
+<div class="modal fade" id="teacherDetailsModal" tabindex="-1" role="dialog">
+    <div class="modal-dialog modal-lg" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Chi tiết tài khoản giáo viên</h5>
+                <button type="button" class="close" data-dismiss="modal">
+                    <span>&times;</span>
+                </button>
+            </div>
+            <div class="modal-body" id="teacherDetailsContent">
+                <!-- Content will be loaded here -->
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-dismiss="modal">Đóng</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function approveTeacher(teacherId) {
+    if (confirm('Bạn có chắc chắn muốn phê duyệt tài khoản này?')) {
+        fetch(`/admin/approve_teacher/${teacherId}`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': getCsrfToken()
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                showAlert(data.message, 'success');
+                updateTeacherRow(teacherId, 'approved');
+            } else {
+                showAlert(data.error, 'error');
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            showAlert('Có lỗi xảy ra khi phê duyệt tài khoản', 'error');
+        });
+    }
+}
+
+function rejectTeacher(teacherId) {
+    if (confirm('Bạn có chắc chắn muốn từ chối tài khoản này?')) {
+        fetch(`/admin/reject_teacher/${teacherId}`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': getCsrfToken()
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                showAlert(data.message, 'success');
+                updateTeacherRow(teacherId, 'rejected');
+            } else {
+                showAlert(data.error, 'error');
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            showAlert('Có lỗi xảy ra khi từ chối tài khoản', 'error');
+        });
+    }
+}
+
+function resetTeacherStatus(teacherId) {
+    if (confirm('Bạn có chắc chắn muốn reset trạng thái tài khoản này về chờ phê duyệt?')) {
+        fetch(`/admin/reset_teacher_status/${teacherId}`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': getCsrfToken()
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                showAlert(data.message, 'success');
+                updateTeacherRow(teacherId, 'pending');
+            } else {
+                showAlert(data.error, 'error');
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            showAlert('Có lỗi xảy ra khi reset trạng thái', 'error');
+        });
+    }
+}
+
+function updateTeacherRow(teacherId, newStatus) {
+    const statusBadge = document.getElementById(`status-badge-${teacherId}`);
+    const row = document.getElementById(`teacher-row-${teacherId}`);
+    
+    // Update status badge
+    statusBadge.className = 'badge';
+    if (newStatus === 'pending') {
+        statusBadge.classList.add('badge-warning');
+        statusBadge.textContent = 'Chờ phê duyệt';
+    } else if (newStatus === 'approved') {
+        statusBadge.classList.add('badge-success');
+        statusBadge.textContent = 'Đã phê duyệt';
+    } else if (newStatus === 'rejected') {
+        statusBadge.classList.add('badge-danger');
+        statusBadge.textContent = 'Đã từ chối';
+    }
+    
+    // Update action buttons
+    const actionCell = row.querySelector('td:last-child .btn-group');
+    if (newStatus === 'pending') {
+        actionCell.innerHTML = `
+            <button type="button" class="btn btn-sm btn-success" 
+                    onclick="approveTeacher(${teacherId})"
+                    title="Phê duyệt">
+                <i class="fas fa-check"></i>
+            </button>
+            <button type="button" class="btn btn-sm btn-danger" 
+                    onclick="rejectTeacher(${teacherId})"
+                    title="Từ chối">
+                <i class="fas fa-times"></i>
+            </button>
+            <button type="button" class="btn btn-sm btn-info" 
+                    onclick="viewTeacherDetails(${teacherId})"
+                    title="Xem chi tiết">
+                <i class="fas fa-eye"></i>
+            </button>
+        `;
+    } else {
+        actionCell.innerHTML = `
+            <button type="button" class="btn btn-sm btn-warning" 
+                    onclick="resetTeacherStatus(${teacherId})"
+                    title="Reset về chờ phê duyệt">
+                <i class="fas fa-undo"></i>
+            </button>
+            <button type="button" class="btn btn-sm btn-info" 
+                    onclick="viewTeacherDetails(${teacherId})"
+                    title="Xem chi tiết">
+                <i class="fas fa-eye"></i>
+            </button>
+        `;
+    }
+}
+
+function viewTeacherDetails(teacherId) {
+    // Implement teacher details view
+    $('#teacherDetailsModal').modal('show');
+    document.getElementById('teacherDetailsContent').innerHTML = '<p>Đang tải...</p>';
+    
+    // You can implement an API endpoint to get teacher details
+    // For now, just show a placeholder
+    document.getElementById('teacherDetailsContent').innerHTML = `
+        <p>Chi tiết tài khoản giáo viên ID: ${teacherId}</p>
+        <p>Chức năng này có thể được mở rộng để hiển thị thông tin chi tiết hơn.</p>
+    `;
+}
+
+function getCsrfToken() {
+    // Implement CSRF token retrieval if needed
+    return '';
+}
+
+function showAlert(message, type) {
+    const alertClass = type === 'success' ? 'alert-success' : 'alert-danger';
+    const alertHtml = `
+        <div class="alert ${alertClass} alert-dismissible fade show" role="alert">
+            ${message}
+            <button type="button" class="close" data-dismiss="alert">
+                <span>&times;</span>
+            </button>
+        </div>
+    `;
+    
+    // Insert alert at the top of the container
+    const container = document.querySelector('.container');
+    container.insertAdjacentHTML('afterbegin', alertHtml);
+    
+    // Auto-dismiss after 5 seconds
+    setTimeout(() => {
+        const alert = container.querySelector('.alert');
+        if (alert) {
+            alert.remove();
+        }
+    }, 5000);
+}
+</script>
+{% endblock %}

@@ -1,0 +1,712 @@
+{% extends "base.html" %}
+
+{% block title %}Trang chủ - {{ super() }}{% endblock %}
+
+{% block content %}
+<!-- University Header Section -->
+<div class="university-header-section">
+    <div class="container">
+        <div class="row align-items-center py-4">
+            <div class="col-md-2 text-center text-md-start">
+                <div class="university-logo">
+                    <img src="{{ url_for('static', filename='img/logo.png') }}"
+                         alt="Logo ĐHGTVT" 
+                         class="logo-img">
+                </div>
+            </div>
+            <div class="col-md-8 text-center">
+                <h1 class="university-name mb-1">
+                    TRƯỜNG ĐẠI HỌC GIAO THÔNG VẬN TẢI
+                </h1>
+                <h2 class="university-name-en mb-3">
+                    UNIVERSITY OF TRANSPORT AND COMMUNICATIONS
+                </h2>
+                <div class="search-system-title">
+                    <i class="fas fa-search me-2"></i>
+                    Hệ thống Tìm kiếm Thông tin Trường
+                </div>
+                <p class="search-system-subtitle">
+                    Tìm kiếm thông tin về tuyển sinh, học phí, hoạt động sinh viên và nhiều hơn nữa
+                </p>
+            </div>
+            <div class="col-md-2 text-center">
+                <div class="user-welcome-box">
+                    <div class="user-avatar bg-{{ 'warning' if current_user.is_teacher() else 'primary' }}">
+                        <i class="fas fa-{{ 'chalkboard-teacher' if current_user.is_teacher() else 'graduation-cap' }}"></i>
+                    </div>
+                    <div class="user-info mt-2">
+                        <div class="user-name">{{ current_user.get_display_name() }}</div>
+                        <div class="user-role">
+                            {% if current_user.is_teacher() %}
+                                <span class="badge bg-warning text-dark">Giáo viên</span>
+                            {% else %}
+                                <span class="badge bg-info">Sinh viên</span>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Main Content Container -->
+<div class="container my-4">
+
+<!-- Upload PDF Section - Chỉ hiển thị cho giáo viên -->
+{% if current_user.is_teacher() %}
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card shadow">
+            <div class="card-body">
+                <h3 class="card-title mb-4">
+                    <i class="fas fa-file-pdf text-danger"></i>
+                    Upload File PDF - Tìm kiếm Tạm thời
+                    <span class="badge bg-warning text-dark ms-2">Chỉ dành cho Giáo viên</span>
+                </h3>
+                <div class="alert alert-info mb-3">
+                    <i class="fas fa-info-circle me-2"></i>
+                    <strong>Lưu ý:</strong> File PDF upload tại đây chỉ dùng để tìm kiếm tạm thời trong phiên làm việc hiện tại và <strong>không được lưu vào cơ sở dữ liệu</strong>. 
+                    Để lưu vĩnh viễn, vui lòng sử dụng chức năng <a href="{{ url_for('admin_documents') }}" class="alert-link">Quản lý Dữ liệu Tìm kiếm</a>.
+                </div>
+                <div class="row">
+                    <div class="col-md-8">
+                        <form id="uploadForm" enctype="multipart/form-data">
+                            <div class="form-group mb-3">
+                                <label for="pdfFile" class="form-label">Chọn file PDF để tìm kiếm:</label>
+                                <input type="file" 
+                                       class="form-control" 
+                                       id="pdfFile" 
+                                       name="file"
+                                       accept=".pdf"
+                                       required>
+                                <div class="form-text">
+                                    Chỉ chấp nhận file PDF có kích thước tối đa 16MB. 
+                                    <strong>File sẽ không được lưu vĩnh viễn.</strong>
+                                </div>
+                            </div>
+                        </form>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="d-grid gap-2">
+                            <button type="button" class="btn btn-success btn-lg" id="uploadBtn">
+                                <i class="fas fa-upload"></i> Upload PDF
+                            </button>
+                            <div id="pdfInfo" class="mt-2" style="display: none;">
+                                <div class="alert alert-info">
+                                    <i class="fas fa-file-pdf"></i>
+                                    <strong>File đã upload:</strong><br>
+                                    <span id="currentPdfName"></span><br>
+                                    <small id="currentPdfContent"></small>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- Search Section -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card shadow">
+            <div class="card-body">
+                <h3 class="card-title mb-4">
+                    <i class="fas fa-search text-primary"></i>
+                    Tìm kiếm thông tin
+                </h3>
+                <div class="row mb-3">
+                    <div class="col-12">
+                        <div class="form-group">
+                            <label class="form-label">Nguồn tìm kiếm:</label>
+                            <div class="btn-group w-100" role="group" id="sourceToggle">
+                                <input type="radio" class="btn-check" name="searchSource" id="sourceDefault" value="default" checked>
+                                <label class="btn btn-outline-primary" for="sourceDefault">
+                                    <i class="fas fa-database"></i> Dữ liệu mặc định
+                                </label>
+                                
+                                {% if current_user.is_teacher() %}
+                                <input type="radio" class="btn-check" name="searchSource" id="sourcePdf" value="pdf">
+                                <label class="btn btn-outline-success" for="sourcePdf">
+                                    <i class="fas fa-file-pdf"></i> File PDF đã upload
+                                </label>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <form id="searchForm">
+                    <div class="row">
+                        <div class="col-md-8">
+                            <div class="form-group mb-3">
+                                <label for="queryInput" class="form-label">Nhập câu hỏi của bạn:</label>
+                                <input type="text" 
+                                       class="form-control form-control-lg" 
+                                       id="queryInput" 
+                                       placeholder="Ví dụ: quy định thư viện, hồ sơ sinh viên, đăng ký làm vé tháng xe buýt..."
+                                       required>
+                            </div>
+                        </div>
+                        <div class="col-md-2">
+                            <div class="form-group mb-3">
+                                <label for="kValue" class="form-label">Số kết quả:</label>
+                                <select class="form-control" id="kValue">
+                                    <option value="3">3</option>
+                                    <option value="5" selected>5</option>
+                                    <option value="10">10</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="col-md-2">
+                            <div class="form-group mb-3">
+                                <label class="form-label">&nbsp;</label>
+                                <button type="submit" class="btn btn-primary btn-lg w-100">
+                                    <i class="fas fa-search"></i> Tìm kiếm
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div id="loading" class="text-center mb-4" style="display: none;">
+    <div class="spinner-border text-primary" role="status">
+        <span class="visually-hidden">Đang tìm kiếm...</span>
+    </div>
+    <p class="mt-2">Đang tìm kiếm...</p>
+</div>
+
+<!-- Results Section -->
+<div id="resultsSection" style="display: none;">
+    <div class="row">
+        <!-- Search Results - Full width -->
+        <div class="col-12">
+            <div class="card shadow">
+                <div class="card-header bg-success text-white">
+                    <h4 class="mb-0">
+                        <i class="fas fa-list"></i>
+                        Kết quả tìm kiếm
+                        <span class="badge bg-light text-dark ms-2" id="resultCount">0 kết quả</span>
+                    </h4>
+                </div>
+                <div class="card-body">
+                    <div id="searchResults"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Sample Queries -->
+<div class="row mt-4">
+    <div class="col-12">
+        <div class="card shadow">
+            <div class="card-header bg-dark text-white">
+                <h4 class="mb-0">
+                    <i class="fas fa-lightbulb"></i>
+                    Câu hỏi gợi ý
+                </h4>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-4">
+                        <h6 class="text-primary">Thông tin trường</h6>
+                        <div class="mb-2">
+                            <button class="btn btn-outline-primary btn-sm sample-query" data-query="giới thiệu trường lịch sử trường">
+                                Giới thiệu trường, lịch sử trường
+                            </button>
+                        </div>
+                        <div class="mb-2">
+                            <button class="btn btn-outline-primary btn-sm sample-query" data-query="sứ mạng nhà trường">
+                                Sứ mạng nhà trường
+                            </button>
+                        </div>
+                        <div class="mb-2">
+                            <button class="btn btn-outline-primary btn-sm sample-query" data-query="cơ cấu tổ chức">
+                                Cơ cấu tổ chức
+                            </button>
+                        </div>
+                        <div class="mb-2">
+                            <button class="btn btn-outline-primary btn-sm sample-query" data-query="giá trị cốt lõi">
+                                Giá trị cốt lõi
+                            </button>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <h6 class="text-success">Sinh viên & Học tập</h6>
+                        <div class="mb-2">
+                            <button class="btn btn-outline-success btn-sm sample-query" data-query="hồ sơ sinh viên">
+                                Hồ sơ sinh viên
+                            </button>
+                        </div>
+                        <div class="mb-2">
+                            <button class="btn btn-outline-success btn-sm sample-query" data-query="giấy xác nhận sinh viên">
+                                Giấy xác nhận sinh viên
+                            </button>
+                        </div>
+                        <div class="mb-2">
+                            <button class="btn btn-outline-success btn-sm sample-query" data-query="hoạt động sinh viên">
+                                Hoạt động sinh viên
+                            </button>
+                        </div>
+                        <div class="mb-2">
+                            <button class="btn btn-outline-success btn-sm sample-query" data-query="chương trình đào tạo ngoại ngữ">
+                                Chương trình đào tạo ngoại ngữ
+                            </button>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <h6 class="text-info">Quy định & Hỗ trợ</h6>
+                        <div class="mb-2">
+                            <button class="btn btn-outline-info btn-sm sample-query" data-query="miễn giảm học phí">
+                                Miễn giảm học phí
+                            </button>
+                        </div>
+                        <div class="mb-2">
+                            <button class="btn btn-outline-info btn-sm sample-query" data-query="quy chế đào tạo đại học">
+                                Quy chế đào tạo đại học
+                            </button>
+                        </div>
+                        <div class="mb-2">
+                            <button class="btn btn-outline-info btn-sm sample-query" data-query="quy định về học bổng">
+                                Quy định về học bổng
+                            </button>
+                        </div>
+                        <div class="mb-2">
+                            <button class="btn btn-outline-info btn-sm sample-query" data-query="mức vốn cho vay">
+                                Mức vốn cho vay
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal chi tiết kết quả -->
+<div class="modal fade" id="resultDetailModal" tabindex="-1" aria-labelledby="resultDetailModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title" id="resultDetailModalLabel">
+                    <i class="fas fa-info-circle"></i> Chi tiết kết quả tìm kiếm
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body p-4">
+                <div id="modalContent">
+                    <!-- Nội dung sẽ được load động -->
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                    <i class="fas fa-times"></i> Đóng
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+</div> <!-- End Main Content Container -->
+{% endblock %}
+
+{% block extra_css %}
+<style>
+/* University Header Styling */
+.university-header-section {
+    background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+    border-bottom: 3px solid #1e3c72;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+}
+
+.university-logo .logo-img {
+    width: 120px;
+    height: auto;
+    object-fit: contain;
+    background: transparent;
+    border-radius: 0;
+    box-shadow: none;       
+}
+
+.university-name {
+    font-size: 2rem;
+    font-weight: 700;
+    color: #1e3c72;
+    text-shadow: 1px 1px 2px rgba(0,0,0,0.1);
+    letter-spacing: 1px;
+}
+
+.university-name-en {
+    font-size: 1.2rem;
+    font-weight: 500;
+    color: #6c757d;
+    letter-spacing: 2px;
+}
+
+.search-system-title {
+    background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+    color: white;
+    padding: 12px 25px;
+    border-radius: 50px;
+    font-size: 1.1rem;
+    font-weight: 600;
+    display: inline-block;
+    box-shadow: 0 4px 15px rgba(30, 60, 114, 0.3);
+    margin-bottom: 10px;
+}
+
+.search-system-subtitle {
+    color: #6c757d;
+    font-size: 0.95rem;
+    margin-bottom: 0;
+}
+
+.user-welcome-box {
+    background: white;
+    padding: 20px;
+    border-radius: 15px;
+    box-shadow: 0 5px 20px rgba(0,0,0,0.1);
+    border: 2px solid #e9ecef;
+}
+
+.user-avatar {
+    width: 60px;
+    height: 60px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0 auto;
+    font-size: 1.5rem;
+    color: white;
+    box-shadow: 0 3px 10px rgba(0,0,0,0.2);
+}
+
+.user-name {
+    font-weight: 600;
+    color: #1e3c72;
+    font-size: 0.9rem;
+    margin-bottom: 5px;
+}
+
+.user-role .badge {
+    font-size: 0.75rem;
+}
+
+/* Card styling improvements */
+.card {
+    border: none;
+    box-shadow: 0 5px 15px rgba(0,0,0,0.08);
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 25px rgba(0,0,0,0.15);
+}
+
+.card-header {
+    border-bottom: none;
+    font-weight: 600;
+}
+
+/* Search result styling */
+.search-result-item {
+    background: white;
+    border: 1px solid #e9ecef;
+    border-radius: 10px;
+    padding: 20px;
+    margin-bottom: 15px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    position: relative;
+    overflow: hidden;
+}
+
+.search-result-item:hover {
+    box-shadow: 0 8px 25px rgba(0,0,0,0.1);
+    transform: translateY(-2px);
+    border-color: #007bff;
+}
+
+.result-rank {
+    width: 50px;
+    height: 50px;
+    min-width: 50px;
+    margin-right: 15px;
+}
+
+.rank-number {
+    background: linear-gradient(135deg, #007bff, #0056b3);
+    color: white;
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: bold;
+    font-size: 1.1rem;
+    box-shadow: 0 3px 10px rgba(0,123,255,0.3);
+}
+
+.result-content {
+    flex: 1;
+}
+
+.result-text {
+    font-size: 1rem;
+    line-height: 1.6;
+    color: #333;
+    margin-bottom: 10px;
+}
+
+.expand-hint {
+    color: #007bff;
+    font-size: 0.85rem;
+    font-weight: 500;
+    margin-bottom: 10px;
+}
+
+.result-source-info {
+    border-top: 1px solid #f0f0f0;
+    padding-top: 10px;
+}
+
+.result-source-info .badge {
+    font-size: 0.75rem;
+    padding: 5px 8px;
+}
+
+/* Animation for results */
+.search-result-item {
+    opacity: 0;
+    transform: translateY(20px);
+    animation: fadeInUp 0.5s ease forwards;
+}
+
+.search-result-item:nth-child(1) { animation-delay: 0.1s; }
+.search-result-item:nth-child(2) { animation-delay: 0.2s; }
+.search-result-item:nth-child(3) { animation-delay: 0.3s; }
+.search-result-item:nth-child(4) { animation-delay: 0.4s; }
+.search-result-item:nth-child(5) { animation-delay: 0.5s; }
+
+@keyframes fadeInUp {
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* Badge for result count */
+#resultCount {
+    font-size: 0.9rem;
+    padding: 6px 12px;
+}
+
+/* Extended content styling */
+.main-result {
+    background: linear-gradient(135deg, #f8f9fa, #e9ecef);
+    border-left: 4px solid #007bff;
+    padding: 12px;
+    border-radius: 8px;
+    margin-bottom: 10px;
+}
+
+.extended-results {
+    background: #f8f9fa;
+    border-radius: 6px;
+    padding: 10px;
+    border: 1px solid #e9ecef;
+}
+
+.additional-content {
+    padding: 5px 0;
+    border-bottom: 1px solid #f0f0f0;
+    font-size: 0.9rem;
+    color: #555;
+}
+
+.additional-content:last-child {
+    border-bottom: none;
+}
+
+/* Modal detail content styling */
+.detail-content-item {
+    margin-bottom: 5px;
+    padding: 12px;
+    border-radius: 8px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+    font-size: 1rem;
+    line-height: 1.5;
+}
+
+.detail-content-item.main-content {
+    background: linear-gradient(135deg, #fff3e0, #ffe0b2);
+    border-left: 5px solid #ff9800;
+}
+
+.detail-content-item.related-content {
+    background: #f8fffe;
+    border-left: 5px solid #17a2b8;
+}
+
+.detail-content-item h6 {
+    margin-bottom: 8px;
+    font-weight: 600;
+    color: #333;
+    font-size: 1.1rem;
+}
+
+.related-documents {
+    max-height: 500px;
+    overflow-y: auto;
+    padding-right: 8px;
+}
+
+.related-content-text {
+    background: #ffffff;
+    padding: 15px;
+    border-radius: 8px;
+    border: 1px solid #e9ecef;
+    line-height: 1.6;
+    color: #444;
+    font-size: 1rem;
+    max-height: 400px;
+    overflow-y: auto;
+}
+
+.related-doc-item {
+    margin-bottom: 2px;
+    padding: 8px;
+    background: white;
+    border-radius: 6px;
+    border: 1px solid #e9ecef;
+    transition: all 0.2s ease;
+    font-size: 1rem;
+    line-height: 1.5;
+}
+
+.related-doc-item:hover {
+    background: #f8f9fa;
+    border-color: #17a2b8;
+    transform: translateX(5px);
+}
+
+/* Giảm chiều cao của phần kết quả chính */
+.detail-content-item.main-content p {
+    max-height: 50px;
+    overflow-y: auto;
+    margin-bottom: 0;
+}
+
+.doc-content {
+    line-height: 1.6;
+    color: #444;
+    font-size: 1rem;
+}
+
+.related-doc-item:last-child {
+    margin-bottom: 0;
+}
+
+/* Modal size enhancements */
+.modal-xl .modal-dialog {
+    max-width: 1200px;
+}
+
+.modal-body {
+    max-height: 70vh;
+    overflow-y: auto;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .modal-xl .modal-dialog {
+        max-width: 95%;
+        margin: 1rem auto;
+    }
+    
+    .detail-content-item {
+        padding: 10px;
+        margin-bottom: 3px;
+        font-size: 0.95rem;
+    }
+    
+    .related-documents {
+        max-height: 350px;
+    }
+    
+    .related-content-text {
+        padding: 12px;
+        font-size: 0.95rem;
+        max-height: 300px;
+    }
+    
+    .related-doc-item {
+        padding: 6px;
+        margin-bottom: 1px;
+        font-size: 0.95rem;
+    }
+    
+    /* Giảm chiều cao kết quả chính trên mobile */
+    .detail-content-item.main-content p {
+        max-height: 40px;
+    }
+    
+    .doc-content {
+        font-size: 0.95rem;
+    }
+    
+    .detail-content-item h6 {
+        font-size: 1rem;
+    }
+    
+    .university-name {
+        font-size: 1.5rem;
+    }
+    
+    .university-name-en {
+        font-size: 1rem;
+    }
+    
+    .search-system-title {
+        font-size: 1rem;
+        padding: 10px 20px;
+    }
+    
+    .user-welcome-box {
+        margin-top: 20px;
+    }
+    
+    .university-logo .logo-img {
+        width: 60px;
+        height: 60px;
+    }
+    
+    .search-result-item {
+        padding: 15px;
+    }
+    
+    .result-rank {
+        width: 40px;
+        height: 40px;
+        min-width: 40px;
+        margin-right: 10px;
+    }
+    
+    .rank-number {
+        width: 35px;
+        height: 35px;
+        font-size: 1rem;
+    }
+}
+</style>
+{% endblock %}

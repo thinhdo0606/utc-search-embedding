@@ -1,0 +1,606 @@
+{% extends "base.html" %}
+
+{% block title %}Quản lý Dữ liệu Tìm kiếm - {{ super() }}{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <div class="card shadow">
+            <div class="card-header bg-success text-white">
+                <h4 class="mb-0">
+                    <i class="fas fa-file-text me-2"></i>
+                    Quản lý Dữ liệu Tìm kiếm
+                    <span class="badge bg-light text-dark ms-2">{{ total_documents if total_documents is defined else documents|length }} documents</span>
+                </h4>
+            </div>
+            <div class="card-body">
+                <!-- Control Panel -->
+                <div class="row mb-4">
+                    <div class="col-md-8">
+                        <div class="btn-group me-2" role="group">
+                            <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addTextModal">
+                                <i class="fas fa-keyboard me-1"></i>Tự nhập
+                            </button>
+                            <button type="button" class="btn btn-success" data-bs-toggle="modal" data-bs-target="#uploadPdfModal">
+                                <i class="fas fa-file-pdf me-1"></i>Upload PDF (Lưu vĩnh viễn)
+                            </button>
+                        </div>
+                        <a href="{{ url_for('export_documents') }}" class="btn btn-warning">
+                            <i class="fas fa-download me-1"></i>Export tất cả
+                        </a>
+                    </div>
+                    <div class="col-md-6 text-end">
+                        <div class="input-group">
+                            <input type="text" class="form-control" id="searchFilter" placeholder="Tìm kiếm trong documents...">
+                            <button class="btn btn-outline-secondary" type="button" onclick="clearFilter()">
+                                <i class="fas fa-times"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Statistics -->
+                <div class="row mb-4">
+                    <div class="col-md-3">
+                        <div class="card bg-primary text-white">
+                            <div class="card-body text-center">
+                                <h4>{{ total_documents if total_documents is defined else documents|length }}</h4>
+                                <p class="mb-0">Tổng documents</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="card bg-success text-white">
+                            <div class="card-body text-center">
+                                <h4>{{ total_documents if total_documents is defined else documents|length }}</h4>
+                                <p class="mb-0">Dữ liệu gốc</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="card bg-info text-white">
+                            <div class="card-body text-center">
+                                <h4>{{ documents|selectattr('metadata.source', 'eq', 'web_interface')|list|length }}</h4>
+                                <p class="mb-0">Thêm qua web</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="card bg-warning text-dark">
+                            <div class="card-body text-center">
+                                <h4>{{ documents|map(attribute='length')|sum }}</h4>
+                                <p class="mb-0">Tổng ký tự</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Documents List -->
+                {% if documents %}
+                    <div class="table-responsive">
+                        <table class="table table-hover" id="documentsTable">
+                            <thead class="table-dark">
+                                <tr>
+                                    <th width="5%">#</th>
+                                    <th width="40%">Nội dung</th>
+                                    <th width="15%">Nguồn</th>
+                                    <th width="15%">Người thêm</th>
+                                    <th width="15%">Ngày thêm</th>
+                                    <th width="10%">Thao tác</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for doc in documents %}
+                                <tr class="document-row" data-doc-id="{{ doc.id }}">
+                                    <td>{{ loop.index }}</td>
+                                    <td>
+                                        <div class="document-preview">
+                                            {{ doc.preview }}
+                                        </div>
+                                        <small class="text-muted">
+                                            {{ doc.length }} ký tự
+                                        </small>
+                                    </td>
+                                    <td>
+                                        {% set source = doc.metadata.get('source', 'unknown') %}
+                                        {% if source == 'data.txt' %}
+                                            <span class="badge bg-primary">
+                                                <i class="fas fa-file"></i> Dữ liệu gốc
+                                            </span>
+                                                                {% elif source == 'web_interface' %}
+                            <span class="badge bg-success">
+                                <i class="fas fa-keyboard"></i> Tự nhập
+                            </span>
+                        {% elif source == 'manual_input' %}
+                            <span class="badge bg-info">
+                                <i class="fas fa-keyboard"></i> Nhập tay
+                            </span>
+
+                                        {% elif doc.metadata.get('source_file') %}
+                                            <span class="badge bg-warning text-dark">
+                                                <i class="fas fa-upload"></i> {{ doc.metadata.source_file }}
+                                            </span>
+                                        {% else %}
+                                            <span class="badge bg-secondary">
+                                                <i class="fas fa-question"></i> {{ source }}
+                                            </span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        {% set added_by = doc.metadata.get('added_by', 'unknown') %}
+                                        {% if added_by == 'system' %}
+                                            <span class="text-muted">
+                                                <i class="fas fa-cog"></i> Hệ thống
+                                            </span>
+                                        {% elif added_by|string|length > 10 %}
+                                            <span class="text-muted">
+                                                <i class="fas fa-user"></i> User ID: {{ added_by }}
+                                            </span>
+                                        {% else %}
+                                            <span class="text-muted">
+                                                <i class="fas fa-user"></i> {{ added_by }}
+                                            </span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        {% set added_date = doc.metadata.get('added_date') %}
+                                        {% if added_date %}
+                                            <small>{{ added_date[:10] }}</small><br>
+                                            <small class="text-muted">{{ added_date[11:19] }}</small>
+                                        {% else %}
+                                            <span class="text-muted">N/A</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        <div class="btn-group btn-group-sm">
+                                            <button type="button" 
+                                                    class="btn btn-outline-info" 
+                                                    onclick="viewDocument('{{ doc.id }}')" 
+                                                    title="Xem chi tiết">
+                                                <i class="fas fa-eye"></i>
+                                            </button>
+                                            {% if doc.metadata.get('source') != 'data.txt' %}
+                                            <button type="button" 
+                                                    class="btn btn-outline-danger" 
+                                                    onclick="deleteDocument('{{ doc.id }}')" 
+                                                    title="Xóa">
+                                                <i class="fas fa-trash"></i>
+                                            </button>
+                                            {% endif %}
+                                        </div>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                {% else %}
+                    <div class="text-center py-5">
+                        <div class="mb-4">
+                            <i class="fas fa-file-text fa-4x text-muted"></i>
+                        </div>
+                        <h5 class="text-muted">Chưa có documents nào</h5>
+                        <p class="text-muted">
+                            Hãy thêm dữ liệu để hệ thống có thể tìm kiếm.
+                        </p>
+                        <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addTextModal">
+                            <i class="fas fa-plus me-1"></i>Thêm document đầu tiên
+                        </button>
+                    </div>
+                {% endif %}
+                
+                <!-- Pagination -->
+                {% if pagination and pagination.pages > 1 %}
+                <div class="d-flex justify-content-between align-items-center mt-4 pt-3 border-top">
+                    <div>
+                        <small class="text-muted">
+                            Hiển thị {{ ((pagination.page - 1) * pagination.per_page + 1) }} - {{ (pagination.page * pagination.per_page if pagination.page * pagination.per_page < pagination.total else pagination.total) }} 
+                            trong tổng số {{ pagination.total }} documents
+                        </small>
+                    </div>
+                    <div>
+                        <nav aria-label="Document pagination">
+                            <ul class="pagination pagination-sm mb-0">
+                                <!-- Previous -->
+                                {% if pagination.has_prev %}
+                                <li class="page-item">
+                                    <a class="page-link" href="{{ url_for('admin_documents', page=pagination.prev_num) }}">
+                                        <i class="fas fa-chevron-left"></i>
+                                    </a>
+                                </li>
+                                {% else %}
+                                <li class="page-item disabled">
+                                    <span class="page-link"><i class="fas fa-chevron-left"></i></span>
+                                </li>
+                                {% endif %}
+                                
+                                <!-- Page numbers -->
+                                {% for page_num in range(1, pagination.pages + 1) %}
+                                    {% if page_num == pagination.page %}
+                                    <li class="page-item active">
+                                        <span class="page-link">{{ page_num }}</span>
+                                    </li>
+                                    {% elif page_num <= 3 or page_num > pagination.pages - 3 or (page_num >= pagination.page - 1 and page_num <= pagination.page + 1) %}
+                                    <li class="page-item">
+                                        <a class="page-link" href="{{ url_for('admin_documents', page=page_num) }}">{{ page_num }}</a>
+                                    </li>
+                                    {% elif page_num == 4 or page_num == pagination.pages - 3 %}
+                                    <li class="page-item disabled">
+                                        <span class="page-link">...</span>
+                                    </li>
+                                    {% endif %}
+                                {% endfor %}
+                                
+                                <!-- Next -->
+                                {% if pagination.has_next %}
+                                <li class="page-item">
+                                    <a class="page-link" href="{{ url_for('admin_documents', page=pagination.next_num) }}">
+                                        <i class="fas fa-chevron-right"></i>
+                                    </a>
+                                </li>
+                                {% else %}
+                                <li class="page-item disabled">
+                                    <span class="page-link"><i class="fas fa-chevron-right"></i></span>
+                                </li>
+                                {% endif %}
+                            </ul>
+                        </nav>
+                    </div>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal 1: Tự nhập văn bản -->
+<div class="modal fade" id="addTextModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title">
+                    <i class="fas fa-keyboard me-2"></i>Tự nhập văn bản mới
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="alert alert-info">
+                    <i class="fas fa-info-circle me-2"></i>
+                    <strong>Hướng dẫn:</strong> Bạn có thể tự gõ nội dung hoặc copy/paste từ website, tài liệu khác vào đây.
+                </div>
+                <form id="addTextForm">
+                    <div class="mb-3">
+                        <label for="documentContent" class="form-label">Nội dung văn bản:</label>
+                        <textarea class="form-control" id="documentContent" rows="12" 
+                                  placeholder="Nhập nội dung văn bản tại đây hoặc paste từ website/tài liệu khác... (tối thiểu 20 ký tự)" required></textarea>
+                        <div class="form-text">
+                            <span id="charCount">0</span> ký tự | Tối thiểu 20 ký tự
+                        </div>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Hủy</button>
+                <button type="button" class="btn btn-primary" onclick="addTextDocument()">
+                    <i class="fas fa-save"></i> Thêm document
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+
+
+<!-- Modal 3: Upload file PDF -->
+<div class="modal fade" id="uploadPdfModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-success text-white">
+                <h5 class="modal-title">
+                    <i class="fas fa-file-pdf me-2"></i>Upload file PDF - Lưu vĩnh viễn
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="uploadPdfForm" enctype="multipart/form-data">
+                    <div class="mb-3">
+                        <label for="pdfFile" class="form-label">Chọn file PDF:</label>
+                        <input type="file" class="form-control" id="pdfFile" 
+                               accept=".pdf" required>
+                        <div class="form-text">
+                            Chỉ chấp nhận file .pdf
+                        </div>
+                    </div>
+                    <div class="alert alert-success">
+                        <i class="fas fa-info-circle me-2"></i>
+                        <strong>Lưu ý:</strong>
+                        <ul class="mb-0 mt-2">
+                            <li><strong>File PDF sẽ được lưu vĩnh viễn vào cơ sở dữ liệu</strong></li>
+                            <li>Hệ thống sẽ trích xuất text từ tất cả trang PDF</li>
+                            <li>Nội dung sẽ được chia theo paragraph tự nhiên</li>
+                            <li>Chỉ paragraph >= 50 ký tự mới được thêm vào hệ thống</li>
+                            <li>Hỗ trợ PDF có text (không phải ảnh scan)</li>
+                        </ul>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Hủy</button>
+                <button type="button" class="btn btn-success" onclick="uploadPdfFile()">
+                    <i class="fas fa-upload"></i> Upload
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal xem chi tiết document -->
+<div class="modal fade" id="viewDocumentModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="viewDocumentTitle">
+                    <i class="fas fa-eye me-2"></i>Chi tiết document
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div id="documentDetail">
+                    <!-- Content will be loaded here -->
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Đóng</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+.document-preview {
+    max-height: 60px;
+    overflow: hidden;
+    line-height: 1.4;
+    position: relative;
+}
+
+.btn-group-sm .btn {
+    font-size: 12px;
+}
+
+.card {
+    transition: transform 0.2s;
+}
+
+.card:hover {
+    transform: translateY(-2px);
+}
+
+.table th {
+    border-top: none;
+    font-weight: 600;
+    color: #495057;
+}
+
+.document-row:hover {
+    background-color: #f8f9fa;
+}
+
+#charCount {
+    font-weight: bold;
+    color: #007bff;
+}
+</style>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// Character count for textareas
+document.getElementById('documentContent').addEventListener('input', function() {
+    const count = this.value.length;
+    document.getElementById('charCount').textContent = count;
+    
+    const countElement = document.getElementById('charCount');
+    if (count < 20) {
+        countElement.style.color = '#dc3545';
+    } else {
+        countElement.style.color = '#28a745';
+    }
+});
+
+
+
+// Filter documents
+document.getElementById('searchFilter').addEventListener('input', function() {
+    const filter = this.value.toLowerCase();
+    const rows = document.querySelectorAll('.document-row');
+    
+    rows.forEach(row => {
+        const text = row.textContent.toLowerCase();
+        if (text.includes(filter)) {
+            row.style.display = '';
+        } else {
+            row.style.display = 'none';
+        }
+    });
+});
+
+function clearFilter() {
+    document.getElementById('searchFilter').value = '';
+    document.querySelectorAll('.document-row').forEach(row => {
+        row.style.display = '';
+    });
+}
+
+// Add text document
+async function addTextDocument() {
+    const content = document.getElementById('documentContent').value.trim();
+    
+    if (!content) {
+        showAlert('Vui lòng nhập nội dung!', 'warning');
+        return;
+    }
+    
+    if (content.length < 20) {
+        showAlert('Nội dung phải có ít nhất 20 ký tự!', 'warning');
+        return;
+    }
+    
+    try {
+        const response = await fetch('/admin/add_document', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ content: content })
+        });
+        
+        const data = await response.json();
+        
+        if (response.ok) {
+            showAlert(data.message, 'success');
+            // Close modal and reload page
+            bootstrap.Modal.getInstance(document.getElementById('addTextModal')).hide();
+            setTimeout(() => location.reload(), 1000);
+        } else {
+            showAlert(data.error, 'error');
+        }
+    } catch (error) {
+        showAlert('Lỗi kết nối server!', 'error');
+    }
+}
+
+
+
+// Upload PDF file
+async function uploadPdfFile() {
+    const fileInput = document.getElementById('pdfFile');
+    const file = fileInput.files[0];
+    
+    if (!file) {
+        showAlert('Vui lòng chọn file PDF!', 'warning');
+        return;
+    }
+    
+    // Kiểm tra kích thước file (giới hạn 10MB)
+    if (file.size > 10 * 1024 * 1024) {
+        showAlert('File PDF quá lớn! Tối đa 10MB.', 'warning');
+        return;
+    }
+    
+    const formData = new FormData();
+    formData.append('file', file);
+    
+    try {
+        const response = await fetch('/admin/upload_pdf_file', {
+            method: 'POST',
+            body: formData
+        });
+        
+        const data = await response.json();
+        
+        if (response.ok) {
+            showAlert(data.message, 'success');
+            // Close modal and reload page
+            bootstrap.Modal.getInstance(document.getElementById('uploadPdfModal')).hide();
+            setTimeout(() => location.reload(), 1000);
+        } else {
+            showAlert(data.error, 'error');
+        }
+    } catch (error) {
+        showAlert('Lỗi kết nối server!', 'error');
+    }
+}
+
+// View document detail
+function viewDocument(docId) {
+    // Find document data
+    const row = document.querySelector(`[data-doc-id="${docId}"]`);
+    if (!row) return;
+    
+    // Get document info from the page data (simplified version)
+    const preview = row.querySelector('.document-preview').textContent;
+    
+    document.getElementById('documentDetail').innerHTML = `
+        <div class="document-info">
+            <h6>Document ID: ${docId}</h6>
+            <p><strong>Preview:</strong></p>
+            <div class="border p-3 bg-light">${preview}</div>
+            <p class="mt-3"><em>Chi tiết đầy đủ sẽ được hiển thị trong phiên bản tiếp theo.</em></p>
+        </div>
+    `;
+    
+    new bootstrap.Modal(document.getElementById('viewDocumentModal')).show();
+}
+
+// Delete document
+async function deleteDocument(docId) {
+    if (!confirm('Bạn có chắc muốn xóa document này? Hành động này không thể hoàn tác.')) {
+        return;
+    }
+    
+    try {
+        const response = await fetch(`/admin/delete_document/${docId}`, {
+            method: 'DELETE'
+        });
+        
+        const data = await response.json();
+        
+        if (response.ok) {
+            showAlert(data.message, 'success');
+            // Remove row from table
+            const row = document.querySelector(`[data-doc-id="${docId}"]`);
+            if (row) {
+                row.style.transition = 'opacity 0.5s';
+                row.style.opacity = '0';
+                setTimeout(() => row.remove(), 500);
+            }
+        } else {
+            showAlert(data.error, 'error');
+        }
+    } catch (error) {
+        showAlert('Lỗi kết nối server!', 'error');
+    }
+}
+
+// Show alert function
+function showAlert(message, type = 'info') {
+    // Remove existing alerts
+    const existingAlerts = document.querySelectorAll('.alert-floating');
+    existingAlerts.forEach(alert => alert.remove());
+
+    const alertDiv = document.createElement('div');
+    alertDiv.className = `alert alert-${type} alert-floating position-fixed`;
+    alertDiv.style.cssText = `
+        top: 20px;
+        right: 20px;
+        z-index: 9999;
+        min-width: 300px;
+        box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+    `;
+    
+    alertDiv.innerHTML = `
+        <div class="d-flex justify-content-between align-items-center">
+            <span>${message}</span>
+            <button type="button" class="btn-close" aria-label="Close"></button>
+        </div>
+    `;
+
+    document.body.appendChild(alertDiv);
+
+    // Auto remove after 5 seconds
+    setTimeout(() => {
+        if (alertDiv.parentNode) {
+            alertDiv.remove();
+        }
+    }, 5000);
+
+    // Manual close
+    alertDiv.querySelector('.btn-close').addEventListener('click', () => {
+        alertDiv.remove();
+    });
+}
+</script>
+{% endblock %}
