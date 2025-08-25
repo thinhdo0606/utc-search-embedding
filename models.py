@@ -15,13 +15,8 @@ class User(UserMixin, db.Model):
     password_hash = db.Column(db.String(255), nullable=False)
     full_name = db.Column(db.String(100), nullable=False)
     
-    # Phân quyền: 'student' hoặc 'teacher'
-    role = db.Column(db.String(20), nullable=False, default='student')
-    
-    # Thông tin bổ sung cho sinh viên
-    student_id = db.Column(db.String(20), unique=True, nullable=True)  # Mã sinh viên
-    major = db.Column(db.String(100), nullable=True)  # Ngành học
-    year = db.Column(db.Integer, nullable=True)  # Năm học
+    # Phân quyền: chỉ 'teacher' (admin cũng là teacher với username='admin')
+    role = db.Column(db.String(20), nullable=False, default='teacher')
     
     # Thông tin bổ sung cho giáo viên
     teacher_id = db.Column(db.String(20), unique=True, nullable=True)  # Mã giáo viên
@@ -42,9 +37,7 @@ class User(UserMixin, db.Model):
         """Kiểm tra password"""
         return check_password_hash(self.password_hash, password)
     
-    def is_student(self):
-        """Kiểm tra có phải sinh viên không"""
-        return self.role == 'student'
+
     
     def is_teacher(self):
         """Kiểm tra có phải giáo viên không"""
@@ -69,9 +62,7 @@ class User(UserMixin, db.Model):
     
     def get_display_name(self):
         """Lấy tên hiển thị"""
-        if self.role == 'student' and self.student_id:
-            return f"{self.full_name} ({self.student_id})"
-        elif self.role == 'teacher' and self.teacher_id:
+        if self.role == 'teacher' and self.teacher_id:
             return f"{self.full_name} ({self.teacher_id})"
         return self.full_name
     
@@ -83,9 +74,6 @@ class User(UserMixin, db.Model):
             'email': self.email,
             'full_name': self.full_name,
             'role': self.role,
-            'student_id': self.student_id,
-            'major': self.major,
-            'year': self.year,
             'teacher_id': self.teacher_id,
             'department': self.department,
             'position': self.position,

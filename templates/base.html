@@ -76,17 +76,21 @@
             
             <div class="collapse navbar-collapse" id="navbarNav">
                 <ul class="navbar-nav me-auto">
+                    <!-- Trang chủ - luôn hiển thị -->
+                    <li class="nav-item">
+                        <a class="nav-link px-3" href="{{ url_for('index') }}">
+                            <i class="fas fa-home me-1"></i>Trang chủ
+                        </a>
+                    </li>
+                    
                     {% if current_user.is_authenticated %}
-                        <li class="nav-item">
-                            <a class="nav-link px-3" href="{{ url_for('index') }}">
-                                <i class="fas fa-home me-1"></i>Trang chủ
-                            </a>
-                        </li>
+                        <!-- Chỉ hiển thị khi đăng nhập -->
                         <li class="nav-item">
                             <a class="nav-link px-3" href="{{ url_for('search_history') }}">
                                 <i class="fas fa-history me-1"></i>Lịch sử tìm kiếm
                             </a>
                         </li>
+                        
                         {% if current_user.is_admin() %}
                         <li class="nav-item dropdown">
                             <a class="nav-link dropdown-toggle px-3" href="#" id="adminDropdown" role="button" data-bs-toggle="dropdown">
@@ -104,7 +108,7 @@
                                 </a></li>
                             </ul>
                         </li>
-                        {% elif current_user.is_teacher() %}
+                        {% elif current_user.is_authenticated and current_user.is_teacher() %}
                         <li class="nav-item">
                             <a class="nav-link px-3" href="{{ url_for('admin_documents') }}">
                                 <i class="fas fa-database me-1"></i>Quản lý dữ liệu
@@ -120,10 +124,8 @@
                             <a class="nav-link dropdown-toggle px-3" href="#" id="navbarDropdown" role="button" data-bs-toggle="dropdown">
                                 <i class="fas fa-user-circle me-1"></i>
                                 {{ current_user.get_display_name() }}
-                                {% if current_user.is_teacher() %}
+                                {% if current_user.is_authenticated and current_user.is_teacher() %}
                                     <span class="badge bg-warning text-dark ms-1">GV</span>
-                                {% else %}
-                                    <span class="badge bg-info ms-1">SV</span>
                                 {% endif %}
                             </a>
                             <ul class="dropdown-menu dropdown-menu-end">
@@ -147,7 +149,7 @@
                         </li>
                         <li class="nav-item">
                             <a class="nav-link px-3" href="{{ url_for('register') }}">
-                                <i class="fas fa-user-plus me-1"></i>Đăng ký
+                                <i class="fas fa-chalkboard-teacher me-1"></i>Đăng ký GV
                             </a>
                         </li>
                     {% endif %}
@@ -193,7 +195,7 @@
                         {% if current_user.is_authenticated %}
                             Xin chào, {{ current_user.full_name }}!
                         {% else %}
-                            Vui lòng đăng nhập để sử dụng hệ thống
+                            Tìm kiếm mở cho tất cả mọi người - Không cần đăng nhập
                         {% endif %}
                     </p>
                 </div>

@@ -4,13 +4,22 @@
 
 {% block content %}
 <div class="row justify-content-center">
-    <div class="col-md-6 col-lg-4">
+    <div class="col-md-8 col-lg-6">
+        <div class="alert alert-info mb-4">
+            <i class="fas fa-info-circle me-2"></i>
+            <strong>Thông báo:</strong> 
+            Bạn có thể 
+            <a href="{{ url_for('index') }}" class="alert-link">tìm kiếm thông tin</a> 
+            mà không cần đăng nhập. Đăng nhập chỉ dành cho giáo viên quản lý nội dung.
+        </div>
+        
         <div class="card shadow">
-            <div class="card-header bg-primary text-white text-center">
+            <div class="card-header bg-warning text-dark text-center">
                 <h4 class="mb-0">
-                    <i class="fas fa-sign-in-alt me-2"></i>
-                    Đăng nhập
+                    <i class="fas fa-chalkboard-teacher me-2"></i>
+                    Đăng nhập Giáo viên
                 </h4>
+                <small class="text-white">Dành cho giáo viên và cán bộ quản lý</small>
             </div>
             <div class="card-body">
                 <form method="POST">
@@ -58,11 +67,22 @@
                 <hr>
                 
                 <div class="text-center">
-                    <p class="mb-2">Chưa có tài khoản?</p>
-                    <a href="{{ url_for('register') }}" class="btn btn-outline-primary">
-                        <i class="fas fa-user-plus me-1"></i>
-                        Đăng ký ngay
-                    </a>
+                    <div class="row">
+                        <div class="col-md-6 mb-2">
+                            <p class="mb-1">Chưa có tài khoản giáo viên?</p>
+                            <a href="{{ url_for('register') }}" class="btn btn-outline-warning btn-sm">
+                                <i class="fas fa-user-plus me-1"></i>
+                                Đăng ký Giáo viên
+                            </a>
+                        </div>
+                        <div class="col-md-6 mb-2">
+                            <p class="mb-1">Chỉ cần tìm kiếm?</p>
+                            <a href="{{ url_for('index') }}" class="btn btn-outline-primary btn-sm">
+                                <i class="fas fa-search me-1"></i>
+                                Tìm kiếm ngay
+                            </a>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>

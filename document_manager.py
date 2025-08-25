@@ -1,6 +1,3 @@
-"""
-Document Manager - Quản lý động documents và embeddings
-"""
 
 import os
 import json
@@ -58,7 +55,7 @@ class DocumentManager:
                     })
                 print(f"✅ Đã load {len(self.documents)} documents từ database")
             else:
-                print("📄 Database chưa có documents nào")
+                print("Database chưa có documents nào")
                 
         except Exception as e:
             print(f"❌ Lỗi khi load từ database: {e}")
@@ -68,9 +65,9 @@ class DocumentManager:
             print("🔧 Building index từ documents...")
             self.rebuild_index()
         else:
-            print("ℹ️ Không có documents để build index")
+            print("Không có documents để build index")
         
-        print(f"✅ DocumentManager đã sẵn sàng với {len(self.documents)} documents")
+        print(f"DocumentManager đã sẵn sàng với {len(self.documents)} documents")
     
 
     
@@ -501,8 +498,7 @@ class DocumentManager:
             'metadata_count': len(self.metadata),
             'model_available': self.model is not None
         }
-        print("=== DocumentManager Debug Status ===")
+        print("DocumentManager Debug Status")
         for key, value in status.items():
             print(f"{key}: {value}")
-        print("=====================================")
         return status

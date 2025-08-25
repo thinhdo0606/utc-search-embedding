@@ -30,21 +30,20 @@
                 </p>
             </div>
             <div class="col-md-2 text-center">
-                <div class="user-welcome-box">
-                    <div class="user-avatar bg-{{ 'warning' if current_user.is_teacher() else 'primary' }}">
-                        <i class="fas fa-{{ 'chalkboard-teacher' if current_user.is_teacher() else 'graduation-cap' }}"></i>
-                    </div>
-                    <div class="user-info mt-2">
-                        <div class="user-name">{{ current_user.get_display_name() }}</div>
-                        <div class="user-role">
-                            {% if current_user.is_teacher() %}
+                {% if current_user.is_authenticated %}
+                    <!-- User đã đăng nhập -->
+                    <div class="user-welcome-box">
+                        <div class="user-avatar bg-warning">
+                            <i class="fas fa-chalkboard-teacher"></i>
+                        </div>
+                        <div class="user-info mt-2">
+                            <div class="user-name">{{ current_user.get_display_name() }}</div>
+                            <div class="user-role">
                                 <span class="badge bg-warning text-dark">Giáo viên</span>
-                            {% else %}
-                                <span class="badge bg-info">Sinh viên</span>
-                            {% endif %}
+                            </div>
                         </div>
                     </div>
-                </div>
+                {% endif %}
             </div>
         </div>
     </div>
@@ -54,7 +53,7 @@
 <div class="container my-4">
 
 <!-- Upload PDF Section - Chỉ hiển thị cho giáo viên -->
-{% if current_user.is_teacher() %}
+{% if current_user.is_authenticated and current_user.is_teacher() %}
 <div class="row mb-4">
     <div class="col-12">
         <div class="card shadow">
@@ -128,7 +127,7 @@
                                     <i class="fas fa-database"></i> Dữ liệu mặc định
                                 </label>
                                 
-                                {% if current_user.is_teacher() %}
+                                {% if current_user.is_authenticated and current_user.is_teacher() %}
                                 <input type="radio" class="btn-check" name="searchSource" id="sourcePdf" value="pdf">
                                 <label class="btn btn-outline-success" for="sourcePdf">
                                     <i class="fas fa-file-pdf"></i> File PDF đã upload

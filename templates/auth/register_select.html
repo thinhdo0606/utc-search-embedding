@@ -1,84 +1,89 @@
 {% extends "base.html" %}
 
-{% block title %}Đăng ký - {{ super() }}{% endblock %}
+{% block title %}Đăng ký Giáo viên - {{ super() }}{% endblock %}
 
 {% block content %}
 <div class="row justify-content-center">
     <div class="col-md-8 col-lg-6">
+        <!-- Thông báo về tính năng public -->
+        <div class="alert alert-info mb-4">
+            <i class="fas fa-info-circle me-2"></i>
+            <strong>Thông báo:</strong> 
+            Tính năng tìm kiếm thông tin đã mở cho tất cả mọi người. 
+            <a href="{{ url_for('index') }}" class="alert-link">Tìm kiếm ngay</a> 
+            mà không cần đăng ký!
+        </div>
+
         <div class="text-center mb-4">
             <h2>
-                <i class="fas fa-user-plus me-2"></i>
-                Chọn loại tài khoản
+                <i class="fas fa-chalkboard-teacher me-2"></i>
+                Đăng ký Giáo viên
             </h2>
-            <p class="text-muted">Vui lòng chọn loại tài khoản phù hợp với bạn</p>
+            <p class="text-muted">Chỉ dành cho giáo viên, cán bộ quản lý nội dung</p>
         </div>
         
-        <div class="row">
-            <!-- Đăng ký sinh viên -->
-            <div class="col-md-6 mb-4">
-                <div class="card h-100 border-primary">
-                    <div class="card-body text-center">
-                        <div class="mb-3">
-                            <i class="fas fa-graduation-cap fa-4x text-primary"></i>
-                        </div>
-                        <h4 class="card-title text-primary">Sinh viên</h4>
-                        <p class="card-text">
-                            Dành cho sinh viên muốn tìm kiếm thông tin về:
-                        </p>
-                        <ul class="list-unstyled text-start">
-                            <li><i class="fas fa-check text-success me-2"></i>Quy chế học tập & rèn luyện</li>
-                            <li><i class="fas fa-check text-success me-2"></i>Học phí & Chính sách hỗ trợ</li>
-                            <li><i class="fas fa-check text-success me-2"></i>Hoạt động Đoàn - Hội, CLB</li>
-                            <li><i class="fas fa-check text-success me-2"></i>Hoạt động sinh viên</li>
-                            <li><i class="fas fa-check text-success me-2"></i>Dịch vụ & Tiện ích</li>
+        <!-- Card đăng ký giáo viên -->
+        <div class="card border-warning">
+            <div class="card-body text-center">
+                <div class="mb-3">
+                    <i class="fas fa-user-tie fa-4x text-warning"></i>
+                </div>
+                <h4 class="card-title text-warning">Tài khoản Giáo viên</h4>
+                <p class="card-text mb-3">
+                    Đăng ký để có quyền quản lý và cập nhật nội dung website
+                </p>
+                
+                <div class="row text-start mb-4">
+                    <div class="col-md-6">
+                        <h6 class="text-primary">Quyền quản lý:</h6>
+                        <ul class="list-unstyled">
+                            <li><i class="fas fa-check text-success me-2"></i>Upload tài liệu PDF</li>
+                            <li><i class="fas fa-check text-success me-2"></i>Thêm/sửa thông tin</li>
+                            <li><i class="fas fa-check text-success me-2"></i>Quản lý documents</li>
                         </ul>
-                        <div class="mt-auto">
-                            <a href="{{ url_for('register_student') }}" class="btn btn-primary btn-lg">
-                                <i class="fas fa-user-graduate me-2"></i>
-                                Đăng ký Sinh viên
-                            </a>
-                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <h6 class="text-info">Tính năng nâng cao:</h6>
+                        <ul class="list-unstyled">
+                            <li><i class="fas fa-check text-success me-2"></i>Xem lịch sử tìm kiếm</li>
+                            <li><i class="fas fa-check text-success me-2"></i>Thống kê sử dụng</li>
+                            <li><i class="fas fa-check text-success me-2"></i>Export dữ liệu</li>
+                        </ul>
                     </div>
                 </div>
-            </div>
-            
-            <!-- Đăng ký giáo viên -->
-            <div class="col-md-6 mb-4">
-                <div class="card h-100 border-warning">
-                    <div class="card-body text-center">
-                        <div class="mb-3">
-                            <i class="fas fa-chalkboard-teacher fa-4x text-warning"></i>
-                        </div>
-                        <h4 class="card-title text-warning">Giáo viên</h4>
-                        <p class="card-text">
-                            Dành cho giáo viên, cán bộ với quyền:
-                        </p>
-                        <ul class="list-unstyled text-start">
-                            <li><i class="fas fa-check text-success me-2"></i>Tìm kiếm thông tin</li>
-                            <li><i class="fas fa-check text-success me-2"></i>Quản lý người dùng</li>
-                            <li><i class="fas fa-check text-success me-2"></i>Cập nhật thông tin</li>
-                            <li><i class="fas fa-check text-success me-2"></i>Upload tài liệu PDF</li>
-                            <li><i class="fas fa-check text-success me-2"></i>Xem thống kê</li>
-                        </ul>
-                        <div class="mt-auto">
-                            <a href="{{ url_for('register_teacher') }}" class="btn btn-warning btn-lg">
-                                <i class="fas fa-user-tie me-2"></i>
-                                Đăng ký Giáo viên
-                            </a>
-                        </div>
-                    </div>
+                
+                <div class="d-grid gap-2">
+                    <a href="{{ url_for('register') }}" class="btn btn-warning btn-lg">
+                        <i class="fas fa-user-plus me-2"></i>
+                        Đăng ký Giáo viên
+                    </a>
                 </div>
             </div>
         </div>
         
         <div class="text-center mt-4">
-            <p class="text-muted">
-                Đã có tài khoản? 
-                <a href="{{ url_for('login') }}" class="text-decoration-none">
-                    <i class="fas fa-sign-in-alt me-1"></i>
-                    Đăng nhập ngay
-                </a>
-            </p>
+            <div class="row">
+                <div class="col-md-6">
+                    <p class="text-muted">
+                        Đã có tài khoản giáo viên? 
+                        <br>
+                        <a href="{{ url_for('login') }}" class="text-decoration-none">
+                            <i class="fas fa-sign-in-alt me-1"></i>
+                            Đăng nhập ngay
+                        </a>
+                    </p>
+                </div>
+                <div class="col-md-6">
+                    <p class="text-muted">
+                        Chỉ cần tìm kiếm thông tin?
+                        <br>
+                        <a href="{{ url_for('index') }}" class="text-decoration-none">
+                            <i class="fas fa-search me-1"></i>
+                            Tìm kiếm ngay
+                        </a>
+                    </p>
+                </div>
+            </div>
         </div>
     </div>
 </div>

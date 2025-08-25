@@ -82,38 +82,24 @@
                                         </div>
                                     </td>
                                     <td>
-                                        {% if user.is_teacher() %}
-                                            <span class="badge bg-warning text-dark">
-                                                <i class="fas fa-chalkboard-teacher me-1"></i>Giáo viên
-                                            </span>
-                                        {% else %}
-                                            <span class="badge bg-primary">
-                                                <i class="fas fa-graduation-cap me-1"></i>Sinh viên
-                                            </span>
-                                        {% endif %}
+                                        <span class="badge bg-warning text-dark">
+                                            <i class="fas fa-chalkboard-teacher me-1"></i>Giáo viên
+                                        </span>
                                     </td>
                                     <td>
-                                        {% if user.is_student() %}
-                                            <div>
-                                                <strong>MSV:</strong> {{ user.student_id }}<br>
-                                                <small class="text-muted">{{ user.major }}</small><br>
-                                                <small class="text-muted">Năm {{ user.year }}</small>
-                                            </div>
-                                        {% elif user.is_teacher() %}
-                                            <div>
-                                                <strong>MGV:</strong> {{ user.teacher_id }}<br>
-                                                <small class="text-muted">{{ user.department }}</small><br>
-                                                <small class="text-muted">
-                                                    {% if user.position == 'giang_vien' %}Giảng viên
-                                                    {% elif user.position == 'pho_giao_su' %}Phó Giáo sư
-                                                    {% elif user.position == 'giao_su' %}Giáo sư
-                                                    {% elif user.position == 'truong_khoa' %}Trưởng khoa
-                                                    {% elif user.position == 'pho_truong_khoa' %}Phó Trưởng khoa
-                                                    {% elif user.position == 'truong_bo_mon' %}Trưởng bộ môn
-                                                    {% else %}{{ user.position }}{% endif %}
-                                                </small>
-                                            </div>
-                                        {% endif %}
+                                        <div>
+                                            <strong>MGV:</strong> {{ user.teacher_id or 'Chưa cập nhật' }}<br>
+                                            <small class="text-muted">{{ user.department or 'Chưa cập nhật' }}</small><br>
+                                            <small class="text-muted">
+                                                {% if user.position == 'giang_vien' %}Giảng viên
+                                                {% elif user.position == 'pho_giao_su' %}Phó Giáo sư
+                                                {% elif user.position == 'giao_su' %}Giáo sư
+                                                {% elif user.position == 'truong_khoa' %}Trưởng khoa
+                                                {% elif user.position == 'pho_truong_khoa' %}Phó Trưởng khoa
+                                                {% elif user.position == 'truong_bo_mon' %}Trưởng bộ môn
+                                                {% else %}{{ user.position or 'Chưa cập nhật' }}{% endif %}
+                                            </small>
+                                        </div>
                                     </td>
                                     <td>
                                         {% if user.is_active %}

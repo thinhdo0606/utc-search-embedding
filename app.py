@@ -72,9 +72,6 @@ def init_doc_manager():
     return doc_manager
 
 
-# Hàm load documents đã được chuyển hoàn toàn sang DocumentManager
-
-
 # Khởi tạo dữ liệu documents (sẽ được load từ DocumentManager khi cần)
 university_documents = []
 
@@ -134,7 +131,6 @@ def search_documents(query, k=5, similarity_threshold=0.3, source='default'):
         search_embeddings = current_pdf_data['embeddings']
         search_content = current_pdf_data['content']
     else:
-        # Tìm kiếm trong data.txt mặc định - lazy load
         ensure_embeddings_loaded()
         if faiss_index is None:
             return []
@@ -327,7 +323,7 @@ def create_pdf_embeddings(content_list):
     return embeddings, index
 
 
-# === AUTHENTICATION ROUTES ===
+# AUTHENTICATION ROUTES
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
@@ -372,48 +368,8 @@ def login():
     return render_template('auth/login.html', form=form)
 
 
-@app.route('/register')
+@app.route('/register', methods=['GET', 'POST'])
 def register():
-    """Trang chọn loại đăng ký"""
-    if current_user.is_authenticated:
-        return redirect(url_for('index'))
-    return render_template('auth/register_select.html')
-
-
-@app.route('/register/student', methods=['GET', 'POST'])
-def register_student():
-    """Đăng ký cho sinh viên"""
-    if current_user.is_authenticated:
-        return redirect(url_for('index'))
-
-    form = StudentRegisterForm()
-    if form.validate_on_submit():
-        user = User(
-            username=form.username.data,
-            email=form.email.data,
-            full_name=form.full_name.data,
-            role='student',
-            student_id=form.student_id.data,
-            major=form.major.data,
-            year=form.year.data
-        )
-        user.set_password(form.password.data)
-
-        try:
-            db.session.add(user)
-            db.session.commit()
-            flash('Đăng ký thành công! Bạn có thể đăng nhập ngay bây giờ.', 'success')
-            return redirect(url_for('login'))
-        except Exception as e:
-            db.session.rollback()
-            flash('Có lỗi xảy ra khi đăng ký. Vui lòng thử lại.', 'error')
-            print(f"Error registering student: {e}")
-
-    return render_template('auth/register_student.html', form=form)
-
-
-@app.route('/register/teacher', methods=['GET', 'POST'])
-def register_teacher():
     """Đăng ký cho giáo viên"""
     if current_user.is_authenticated:
         return redirect(url_for('index'))
@@ -466,13 +422,8 @@ def profile():
     if request.method == 'GET':
         form.full_name.data = current_user.full_name
         form.email.data = current_user.email
-
-        if current_user.is_student():
-            form.major.data = current_user.major
-            form.year.data = current_user.year
-        elif current_user.is_teacher():
-            form.department.data = current_user.department
-            form.position.data = current_user.position
+        form.department.data = current_user.department
+        form.position.data = current_user.position
 
     if form.validate_on_submit():
         # Kiểm tra email không trùng với user khác
@@ -486,13 +437,8 @@ def profile():
         else:
             current_user.full_name = form.full_name.data
             current_user.email = form.email.data
-
-            if current_user.is_student():
-                current_user.major = form.major.data
-                current_user.year = form.year.data
-            elif current_user.is_teacher():
-                current_user.department = form.department.data
-                current_user.position = form.position.data
+            current_user.department = form.department.data
+            current_user.position = form.position.data
 
             try:
                 db.session.commit()
@@ -529,11 +475,11 @@ def change_password():
     return render_template('auth/change_password.html', form=form)
 
 
-# === MAIN APPLICATION ROUTES ===
+# MAIN APPLICATION ROUTES
 
 @app.route('/')
-@login_required
 def index():
+    # Trang chủ public
     return render_template('index.html')
 
 
@@ -593,7 +539,6 @@ def upload_file():
 
 
 @app.route('/search', methods=['POST'])
-@login_required
 def search():
     # API tìm kiếm
     data = request.get_json()
@@ -612,19 +557,19 @@ def search():
     # Thực hiện tìm kiếm với ngưỡng
     results = search_documents(query, k, threshold, source)
 
-    # Lưu lịch sử tìm kiếm
-    try:
-        search_history = SearchHistory(
-            user_id=current_user.id,
-            query=query,
-            source=source,
-            results_count=len(results)
-        )
-        db.session.add(search_history)
-        db.session.commit()
-    except Exception as e:
-        print(f"Error saving search history: {e}")
-        # Không cần rollback vì không ảnh hưởng đến kết quả tìm kiếm
+    # Lưu lịch sử tìm kiếm (chỉ khi có user đăng nhập)
+    if current_user.is_authenticated:
+        try:
+            search_history = SearchHistory(
+                user_id=current_user.id,
+                query=query,
+                source=source,
+                results_count=len(results)
+            )
+            db.session.add(search_history)
+            db.session.commit()
+        except Exception as e:
+            print(f"Error saving search history: {e}")
 
     # Kiểm tra nếu không có kết quả
     if not results:
@@ -652,7 +597,6 @@ def search():
 
 
 @app.route('/pdf_info')
-@login_required
 def pdf_info():
     # API lấy thông tin PDF hiện tại
     if current_pdf_data['filename']:
@@ -677,7 +621,6 @@ def pdf_info():
 
 
 @app.route('/debug_search', methods=['POST'])
-@login_required
 def debug_search():
     # API debug tìm kiếm
     data = request.get_json()
@@ -709,7 +652,6 @@ def debug_search():
 
 
 @app.route('/documents')
-@login_required
 def get_documents():
     # API lấy tất cả documents
     ensure_documents_loaded()
@@ -723,7 +665,6 @@ def get_documents():
 
 
 @app.route('/context', methods=['POST'])
-@login_required
 def get_context():
     # API lấy ngữ cảnh mở rộng cho một kết quả tìm kiếm
     data = request.get_json()
@@ -1218,7 +1159,7 @@ def export_documents():
         return redirect(url_for('admin_documents'))
 
 
-# === DATABASE INITIALIZATION ===
+# DATABASE INITIALIZATION
 
 def init_database():
     """Khởi tạo database và tạo bảng"""
@@ -1253,9 +1194,9 @@ def init_database():
         print(f"📄 Hiện có {document_count} documents trong database")
         
         # Khởi tạo DocumentManager ngay để sẵn sàng cho search
-        print("🔧 Khởi tạo DocumentManager và embeddings...")
+        print("Khởi tạo DocumentManager và embeddings...")
         init_doc_manager()
-        print("✅ Hệ thống đã sẵn sàng cho tìm kiếm!")
+        print("Hệ thống đã sẵn sàng cho tìm kiếm!")
 
 
 if __name__ == '__main__':
