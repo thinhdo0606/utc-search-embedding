@@ -135,7 +135,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     <div class="alert alert-info mt-3">
                         <i class="fas fa-lightbulb me-2"></i>
                         <strong>Gợi ý:</strong> Hãy thử tìm kiếm với các từ khóa như: 
-                        <em>tuyển sinh, học phí, ký túc xá, thư viện, ngành đào tạo, hoạt động sinh viên</em>
+                        <em>học phí, ký túc xá, thư viện, ngành đào tạo, hoạt động sinh viên</em>
                     </div>
                 </div>
             `;
@@ -230,17 +230,17 @@ document.addEventListener('DOMContentLoaded', function() {
             // Thêm 8 documents tiếp theo nếu có
             if (result.extended_content.length > 1) {
                 contentPreview += `<div class="extended-results mt-2">
-                    <small class="text-muted"><strong>📚 Nội dung liên quan:</strong></small>`;
+                    <small class="text-muted"><strong>Nội dung liên quan:</strong></small>`;
                 
                 for (let i = 1; i < result.extended_content.length; i++) {
                     const additionalContent = result.extended_content[i];
                     contentPreview += `<div class="additional-content mt-1">
-                        <small class="text-muted"> </small>${additionalContent}
+                        <small class="text-muted"></small>${additionalContent}
                     </div>`;
                 }
                 contentPreview += `</div>`;
             }
-            hasMoreContent = false; // Đã hiển thị đầy đủ
+            hasMoreContent = result.expanded_content && result.expanded_content.length > result.content.length;
         } else {
             // Logic cũ cho PDF hoặc content thông thường
             const sentences = result.content.split(/[.!?]+/).filter(s => s.trim().length > 0);
@@ -273,10 +273,6 @@ document.addEventListener('DOMContentLoaded', function() {
         
         return div;
     }
-
-
-
-
 
     // Show alert function
     function showAlert(message, type = 'info') {
@@ -498,28 +494,12 @@ document.addEventListener('DOMContentLoaded', function() {
                 
                 <div class="content-section">
                     <div class="content-title">
-                        <i class="fas fa-file-text"></i> Nội dung đầy đủ
+                        <i class="fas fa-file-text"></i> Chi tiết nội dung
                     </div>
-                    <div class="result-detail-text paragraph-content">
+                    <div class="result-detail-text">
                         ${result.source === 'default' && result.extended_content ? 
-                            `<div class="detail-content-item main-content">
-                                <h6><i class="fas fa-star text-warning"></i> Kết quả chính:</h6>
-                                <p class="mb-0">${result.extended_content[0]}</p>
-                            </div>
-                            ${result.extended_content.length > 1 ? 
-                                `<div class="detail-content-item related-content">
-                                    <h6><i class="fas fa-book-open text-info"></i> Nội dung liên quan:</h6>
-                                    <div class="related-documents">
-                                        ${result.extended_content.slice(1).map((content) => 
-                                            `<div class="related-doc-item">
-                                                <span class="doc-content">${content}</span>
-                                            </div>`
-                                        ).join('')}
-                                    </div>
-                                </div>` 
-                                : ''
-                            }` 
-                            : result.content
+                            generateModalContent(result) 
+                            : `<div class="modal-content-text">${result.content}</div>`
                         }
                     </div>
                 </div>
@@ -619,6 +599,98 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
 
+
+    // Generate modal content với expanded content (đến khi gặp delimiter) nhưng giao diện giống bên ngoài
+    function generateModalContent(result) {
+        if (!result.expanded_content) return result.content;
+        
+        // Sử dụng expanded_content (đã được mở rộng đến delimiter) thay vì extended_content (chỉ 8 documents)
+        const expandedText = result.expanded_content;
+        
+        // Lấy main content và rút ngắn nó
+        const mainContent = result.main_content || result.content.split(' | ')[0];
+        
+        // Rút ngắn main content (chỉ lấy 2-3 câu đầu)
+        const sentences = mainContent.split(/[.!?]+/).filter(s => s.trim().length > 0);
+        const shortMainContent = sentences.length > 2 ? 
+            sentences.slice(0, 2).join('. ').trim() + '...' : 
+            mainContent;
+        
+        // Tạo phần còn lại từ expanded content (loại bỏ phần main)
+        const remainingContent = expandedText.replace(mainContent, '').trim();
+        const remainingParts = remainingContent.split('\n').filter(part => part.trim().length > 0);
+        
+        let modalContent = `<div class="modal-main-result">
+            <div class="modal-main-header">
+                <strong>📌 Kết quả chính:</strong>
+            </div>
+            <div class="modal-main-content">${shortMainContent}</div>
+        </div>`;
+        
+        // Thêm nội dung mở rộng
+        if (remainingParts.length > 0) {
+            modalContent += `<div class="modal-extended-results">
+                <div class="modal-extended-header">
+                    <strong>Nội dung liên quan:</strong>
+                </div>`;
+            
+            remainingParts.forEach(part => {
+                if (part.trim()) {
+                    modalContent += `<div class="modal-additional-content">
+                        ${part.trim()}
+                    </div>`;
+                }
+            });
+            modalContent += `</div>`;
+        }
+        
+        return modalContent;
+    }
+
+    // Format expanded content function
+    function formatExpandedContent(expandedContent) {
+        if (!expandedContent) return '';
+        
+        // Chia nội dung thành các đoạn văn
+        const paragraphs = expandedContent.split(/\n+/).filter(p => p.trim().length > 0);
+        
+        let formattedContent = '';
+        
+        paragraphs.forEach((paragraph, index) => {
+            const trimmedParagraph = paragraph.trim();
+            
+            // Kiểm tra xem đoạn có phải là tiêu đề không
+            if (isHeadingParagraph(trimmedParagraph)) {
+                formattedContent += `<h6 class="text-primary fw-bold mt-3 mb-2">
+                    <i class="fas fa-bookmark"></i> ${trimmedParagraph}
+                </h6>`;
+            } else {
+                // Đoạn văn bình thường
+                formattedContent += `<p class="mb-3 lh-lg" style="text-align: justify;">
+                    ${trimmedParagraph}
+                </p>`;
+            }
+        });
+        
+        return formattedContent;
+    }
+    
+    // Check if paragraph is a heading
+    function isHeadingParagraph(paragraph) {
+        const upperParagraph = paragraph.toUpperCase();
+        
+        // Kiểm tra các pattern của tiêu đề
+        const headingPatterns = [
+            /^PHẦN\s+\d+/,           // PHẦN 1, PHẦN 2
+            /^CHƯƠNG\s+[IVX\d]+/,   // CHƯƠNG I, CHƯƠNG 1
+            /^ĐIỀU\s+\d+/,          // ĐIỀU 1, ĐIỀU 2
+            /^[IVX]+\./,            // I., II., III.
+            /^\d+\.\s*[A-ZÀÁẠẢÃÂẦẤẬẨẪĂẰẮẶẲẴÈÉẸẺẼÊỀẾỆỂỄÌÍỊỈĨÒÓỌỎÕÔỒỐỘỔỖƠỜỚỢỞỠÙÚỤỦŨƯỪỨỰỬỮỲÝỴỶỸĐ]/,  // 1. ABC, 2. XYZ
+            /^[a-z]\)\s*[A-ZÀÁẠẢÃÂẦẤẬẨẪĂẰẮẶẲẴÈÉẸẺẼÊỀẾỆỂỄÌÍỊỈĨÒÓỌỎÕÔỒỐỘỔỖƠỜỚỢỞỠÙÚỤỦŨƯỪỨỰỬỮỲÝỴỶỸĐ]/   // a) ABC, b) XYZ
+        ];
+        
+        return headingPatterns.some(pattern => pattern.test(upperParagraph));
+    }
 
     // Initialize page
     console.log('Ứng dụng tìm kiếm đã được khởi tạo thành công!');

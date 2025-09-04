@@ -234,10 +234,14 @@ class DocumentManager:
             new_embedding = self.model.encode([text], convert_to_tensor=True)
             new_embedding_np = new_embedding.cpu().numpy()
             
+            # Chuẩn hóa vector về độ dài 1 (để sử dụng cosine similarity)
+            norms = np.linalg.norm(new_embedding_np, axis=1, keepdims=True) + 1e-12
+            new_embedding_np = new_embedding_np / norms
+            
             if self.faiss_index is None:
-                # Tạo index mới nếu chưa có
+                # Tạo index mới nếu chưa có - sử dụng Inner Product cho cosine similarity
                 embedding_dim = new_embedding_np.shape[1]
-                self.faiss_index = faiss.IndexFlatL2(embedding_dim)
+                self.faiss_index = faiss.IndexFlatIP(embedding_dim)
                 self.embeddings = new_embedding_np
             else:
                 # Thêm vào index hiện có
@@ -267,13 +271,17 @@ class DocumentManager:
             # Tạo embeddings cho tất cả documents
             print("🔄 Tạo embeddings...")
             embeddings = self.model.encode(self.documents, convert_to_tensor=True)
-            self.embeddings = embeddings.cpu().numpy()
+            embeddings_np = embeddings.cpu().numpy()
+            
+            # Chuẩn hóa để sử dụng cosine similarity
+            norms = np.linalg.norm(embeddings_np, axis=1, keepdims=True) + 1e-12
+            self.embeddings = embeddings_np / norms
             print(f"✅ Embeddings shape: {self.embeddings.shape}")
             
-            # Tạo FAISS index mới
-            print("🔄 Tạo FAISS index...")
+            # Tạo FAISS index mới - sử dụng Inner Product cho cosine similarity
+            print("🔄 Tạo FAISS index (cosine similarity)...")
             embedding_dim = self.embeddings.shape[1]
-            self.faiss_index = faiss.IndexFlatL2(embedding_dim)
+            self.faiss_index = faiss.IndexFlatIP(embedding_dim)
             self.faiss_index.add(self.embeddings)
             print(f"✅ FAISS index với {self.faiss_index.ntotal} vectors")
             
@@ -290,8 +298,8 @@ class DocumentManager:
     
 
     
-    def search(self, query, k=5, similarity_threshold=0.3):
-        """Tìm kiếm documents"""
+    def search(self, query, k=5, similarity_threshold=0.5):
+        """Tìm kiếm documents với cải tiến độ chính xác"""
         if self.faiss_index is None or len(self.documents) == 0:
             return []
         
@@ -301,48 +309,227 @@ class DocumentManager:
             self.rebuild_index()
         
         try:
-            # Tạo embedding cho query
-            query_embedding = self.model.encode([query], convert_to_tensor=True)
-            query_np = query_embedding.cpu().numpy()
+            # Tạo embedding cho query gốc (không expand quá rộng)
+            original_embedding = self.model.encode([query], convert_to_tensor=True)
+            original_np = original_embedding.cpu().numpy()
             
-            # Tìm kiếm với FAISS
-            distances, indices = self.faiss_index.search(query_np, min(k, len(self.documents)))
+            # Chuẩn hóa query embedding
+            norms = np.linalg.norm(original_np, axis=1, keepdims=True) + 1e-12
+            query_np = original_np / norms
+            
+            # Tìm kiếm với FAISS (lấy nhiều hơn để có thể filter và re-rank)
+            search_k = min(k * 5, len(self.documents))
+            distances, indices = self.faiss_index.search(query_np, search_k)
         except Exception as e:
             print(f"❌ Lỗi trong quá trình search: {e}")
             return []
         
-        results = []
+        candidates = []
         for i, idx in enumerate(indices[0]):
             if idx >= len(self.documents):
                 continue
             
-            # Tính cosine similarity
-            doc_embedding = self.embeddings[idx:idx+1]
+            # Với normalized embeddings và IndexFlatIP, distances chính là cosine similarity
+            similarity = float(distances[0][i])
             
-            # Kiểm tra embedding hợp lệ
-            if len(doc_embedding) == 0 or len(doc_embedding[0]) == 0:
-                continue
-                
-            doc_norm = np.linalg.norm(doc_embedding[0])
-            query_norm = np.linalg.norm(query_np[0])
-            
-            if doc_norm == 0 or query_norm == 0:
-                continue
-                
-            similarity = np.dot(query_np[0], doc_embedding[0]) / (query_norm * doc_norm)
-            
+            # Áp dụng ngưỡng similarity cao hơn
             if similarity >= similarity_threshold:
-                results.append({
-                    'index': int(idx),
-                    'content': self.documents[idx],
-                    'metadata': self.metadata[idx] if idx < len(self.metadata) else {},
-                    'score': float(distances[0][i]),
-                    'similarity': float(similarity),
-                    'rank': len(results) + 1,
-                    'source': 'default'
-                })
+                doc_content = self.documents[idx]
+                
+                # Tính lexical overlap score (quan trọng hơn)
+                overlap_score = self._calculate_keyword_overlap(query, doc_content)
+                
+                # Kiểm tra relevance contextual
+                context_score = self._calculate_context_relevance(query, doc_content)
+                
+                # Penalty cho những document có nhiều từ khóa không liên quan
+                noise_penalty = self._calculate_noise_penalty(query, doc_content)
+                
+                # Kết hợp điểm số với trọng số mới:
+                # - 50% semantic similarity
+                # - 30% keyword overlap  
+                # - 20% context relevance
+                # - Trừ noise penalty
+                combined_score = (0.5 * similarity + 
+                                0.3 * overlap_score + 
+                                0.2 * context_score - 
+                                0.1 * noise_penalty)
+                
+                # Chỉ lấy những kết quả có điểm tổng hợp cao
+                if combined_score >= 0.4:  # Ngưỡng tổng hợp cao hơn
+                    candidates.append({
+                        'index': int(idx),
+                        'content': doc_content,
+                        'metadata': self.metadata[idx] if idx < len(self.metadata) else {},
+                        'score': float(combined_score),
+                        'similarity': similarity,
+                        'overlap_score': overlap_score,
+                        'context_score': context_score,
+                        'noise_penalty': noise_penalty,
+                        'rank': 0,  # Will be set after sorting
+                        'source': 'default'
+                    })
+        
+        # Re-rank theo combined score
+        candidates.sort(key=lambda x: x['score'], reverse=True)
+        
+        # Lọc thêm bằng cách kiểm tra sự liên quan thực sự
+        filtered_candidates = []
+        for candidate in candidates:
+            if self._is_truly_relevant(query, candidate['content']):
+                filtered_candidates.append(candidate)
+        
+        # Chỉ lấy top k và gán rank
+        results = []
+        for rank, candidate in enumerate(filtered_candidates[:k], 1):
+            candidate['rank'] = rank
+            results.append(candidate)
         
         return results
+    
+    def _expand_query_vietnamese(self, query):
+        """Mở rộng query với các từ đồng nghĩa tiếng Việt"""
+        query_lower = query.lower()
+        expansions = [query]  # Luôn bao gồm query gốc
+        
+        # Từ điển đồng nghĩa cho các thuật ngữ phổ biến
+        synonyms_map = {
+            'rèn luyện': ['điểm rèn luyện', 'đánh giá rèn luyện', 'DRL', 'điểm DRL', 'rèn luyện sinh viên', 'ĐÁNH GIÁ RÈN LUYỆN SINH VIÊN'],
+            'cố vấn học tập': ['cố vấn', 'tư vấn học tập', 'đánh giá cố vấn', 'cố vấn hoc tap', 'ĐÁNH GIÁ CỐ VẤN HỌC TẬP'],
+            'học phí': ['mức học phí', 'thu học phí', 'miễn giảm học phí', 'hoc phi'],
+            'học bổng': ['hoc bong', 'học bổng khuyến khích', 'học bổng khuyến học'],
+            'sinh viên': ['sinh vien', 'học sinh', 'hoc sinh'],
+            'giảng viên': ['giang vien', 'thầy cô', 'giáo viên'],
+            'tuyển sinh': ['tuyen sinh', 'xét tuyển', 'thi tuyển'],
+            'đào tạo': ['dao tao', 'chương trình đào tạo', 'chuong trinh dao tao'],
+            'thư viện': ['thu vien', 'library', 'kho sách'],
+            'ký túc xá': ['ki tuc xa', 'ktx', 'dormitory'],
+            'hoạt động': ['hoat dong', 'sinh hoạt', 'tổ chức']
+        }
+        
+        # Tìm các từ khóa phù hợp và thêm đồng nghĩa
+        for key, synonyms in synonyms_map.items():
+            if key in query_lower or any(syn in query_lower for syn in synonyms):
+                for synonym in synonyms:
+                    if synonym not in expansions:
+                        expansions.append(synonym)
+        
+        return expansions[:5]  # Giới hạn số lượng để tránh quá tải
+    
+    def _calculate_keyword_overlap(self, query, document):
+        """Tính điểm overlap từ khóa giữa query và document"""
+        # Chuẩn hóa text
+        query_clean = re.sub(r'[^\w\s]', ' ', query.lower())
+        doc_clean = re.sub(r'[^\w\s]', ' ', document.lower())
+        
+        # Tách từ và loại bỏ từ ngắn
+        query_words = set([w for w in query_clean.split() if len(w) > 2])
+        doc_words = set([w for w in doc_clean.split() if len(w) > 2])
+        
+        if not query_words:
+            return 0.0
+        
+        # Tính tỷ lệ từ trùng khớp
+        intersection = len(query_words & doc_words)
+        return intersection / len(query_words)
+    
+    def _calculate_context_relevance(self, query, document):
+        """Tính điểm liên quan theo ngữ cảnh"""
+        query_lower = query.lower()
+        doc_lower = document.lower()
+        
+        # Định nghĩa các chủ đề chính và từ khóa liên quan
+        topic_keywords = {
+            'học_tập': ['học tập', 'học phí', 'môn học', 'tín chỉ', 'điểm', 'thi', 'kiểm tra', 'bài tập', 'giảng dạy', 'chương trình'],
+            'sinh_viên': ['sinh viên', 'học sinh', 'tân sinh viên', 'cựu sinh viên', 'lớp', 'khóa học'],
+            'giảng_viên': ['giảng viên', 'giáo viên', 'thầy', 'cô', 'giáo sư', 'phó giáo sư', 'tiến sĩ'],
+            'hành_chính': ['đăng ký', 'thủ tục', 'giấy tờ', 'chứng nhận', 'xác nhận', 'phòng ban', 'văn phòng'],
+            'cơ_sở_vật_chất': ['thư viện', 'phòng học', 'giảng đường', 'phòng thí nghiệm', 'ký túc xá', 'ktx'],
+            'hoạt_động': ['hoạt động', 'sự kiện', 'hội thảo', 'seminar', 'nghiên cứu', 'khoa học'],
+            'quy_định': ['quy định', 'quy chế', 'luật', 'điều', 'khoản', 'nghị định', 'thông tư']
+        }
+        
+        # Xác định chủ đề của query
+        query_topics = []
+        for topic, keywords in topic_keywords.items():
+            if any(keyword in query_lower for keyword in keywords):
+                query_topics.append(topic)
+        
+        if not query_topics:
+            return 0.5  # Điểm trung bình nếu không xác định được chủ đề
+        
+        # Tính điểm liên quan theo chủ đề
+        relevance_score = 0.0
+        for topic in query_topics:
+            topic_keywords_in_doc = sum(1 for keyword in topic_keywords[topic] if keyword in doc_lower)
+            if topic_keywords_in_doc > 0:
+                relevance_score += topic_keywords_in_doc / len(topic_keywords[topic])
+        
+        return min(relevance_score / len(query_topics), 1.0)
+    
+    def _calculate_noise_penalty(self, query, document):
+        """Tính penalty cho document có nhiều từ khóa không liên quan"""
+        doc_lower = document.lower()
+        query_lower = query.lower()
+        
+        # Danh sách từ khóa "nhiễu" thường gây nhầm lẫn
+        noise_keywords = {
+            'thể_thao': ['đá cầu', 'bóng bàn', 'bóng đá', 'bóng chuyền', 'cầu lông', 'tennis', 'bóng rổ', 'võ thuật', 'thể dục', 'thể thao'],
+            'câu_lạc_bộ': ['clb', 'câu lạc bộ', 'club', 'nhóm', 'đội'],
+            'địa_điểm_xa': ['hà nội', 'hồ chí minh', 'đà nẵng', 'cần thơ'] if not any(city in query_lower for city in ['hà nội', 'hồ chí minh', 'đà nẵng', 'cần thơ']) else [],
+            'thông_tin_cá_nhân': ['số điện thoại', 'email cá nhân', 'địa chỉ nhà'] if not any(info in query_lower for info in ['liên hệ', 'thông tin']) else []
+        }
+        
+        penalty = 0.0
+        total_noise_words = 0
+        
+        for category, keywords in noise_keywords.items():
+            noise_count = sum(1 for keyword in keywords if keyword in doc_lower)
+            total_noise_words += len(keywords)
+            
+            # Nếu query không liên quan đến category này nhưng document có nhiều từ khóa category
+            if noise_count > 0:
+                category_in_query = any(keyword in query_lower for keyword in keywords)
+                if not category_in_query:
+                    penalty += noise_count / len(keywords)
+        
+        return min(penalty, 1.0)
+    
+    def _is_truly_relevant(self, query, document):
+        """Kiểm tra document có thực sự liên quan đến query không"""
+        query_lower = query.lower()
+        doc_lower = document.lower()
+        
+        # Nếu query về học tập mà document chỉ nói về thể thao -> không liên quan
+        academic_keywords = ['học', 'thi', 'kiểm tra', 'điểm', 'môn', 'tín chỉ', 'chương trình', 'đào tạo']
+        sports_keywords = ['đá cầu', 'bóng bàn', 'bóng đá', 'thể thao', 'câu lạc bộ thể thao']
+        
+        query_is_academic = any(keyword in query_lower for keyword in academic_keywords)
+        doc_is_mainly_sports = (
+            sum(1 for keyword in sports_keywords if keyword in doc_lower) >= 2 and
+            sum(1 for keyword in academic_keywords if keyword in doc_lower) == 0
+        )
+        
+        if query_is_academic and doc_is_mainly_sports:
+            return False
+        
+        # Nếu query về quy định mà document chỉ nói về hoạt động giải trí
+        regulation_keywords = ['quy định', 'quy chế', 'luật', 'điều', 'khoản', 'nghị định']
+        entertainment_keywords = ['giải trí', 'vui chơi', 'sinh hoạt', 'party', 'lễ hội']
+        
+        query_is_regulation = any(keyword in query_lower for keyword in regulation_keywords)
+        doc_is_entertainment = sum(1 for keyword in entertainment_keywords if keyword in doc_lower) >= 2
+        
+        if query_is_regulation and doc_is_entertainment:
+            return False
+        
+        # Kiểm tra độ dài tối thiểu của overlap
+        query_words = set(re.findall(r'\b\w{3,}\b', query_lower))
+        doc_words = set(re.findall(r'\b\w{3,}\b', doc_lower))
+        overlap = len(query_words & doc_words)
+        
+        # Cần có ít nhất 1 từ trùng khớp hoặc semantic similarity cao
+        return overlap >= 1 or len(query_words) == 0
     
     def delete_document(self, doc_id):
         """Xóa document theo ID (từ database và memory)"""

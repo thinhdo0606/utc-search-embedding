@@ -55,7 +55,6 @@ print("Model đã được tải thành công!")
 doc_manager = None
 
 def get_doc_manager():
-    """Trả về DocumentManager đã được khởi tạo"""
     global doc_manager
     if doc_manager is None:
         print("⚠️ DocumentManager chưa được khởi tạo! Đang khởi tạo...")
@@ -83,7 +82,7 @@ def ensure_documents_loaded():
         university_documents = dm.documents.copy()
         print(f"📄 Đã sync {len(university_documents)} documents từ DocumentManager")
 
-# Embeddings và FAISS index sẽ được khởi tạo khi cần
+# Embeddings và FAISS index được khởi tạo
 document_embeddings = None
 faiss_index = None
 
@@ -99,19 +98,24 @@ def ensure_embeddings_loaded():
         document_embeddings = dm.embeddings
         faiss_index = dm.faiss_index
         ensure_documents_loaded()  # Sync documents list
-        print(f"📄 Đã sync embeddings và FAISS index từ DocumentManager")
+        print(f"Đã sync embeddings và FAISS index từ DocumentManager")
     else:
         # Fallback: tạo mới nếu DocumentManager chưa có
         ensure_documents_loaded()
         if university_documents:
-            print("🔄 Tạo embeddings cho documents...")
-            document_embeddings = model.encode(university_documents, convert_to_tensor=True)
+            print("Tạo embeddings cho documents...")
+            tensor = model.encode(university_documents, convert_to_tensor=True)
+            embs = tensor.cpu().numpy()
+            
+            # Chuẩn hóa embeddings cho cosine similarity
+            norms = np.linalg.norm(embs, axis=1, keepdims=True) + 1e-12
+            document_embeddings = embs / norms
 
-            # Tạo FAISS index
+            # Tạo FAISS index với Inner Product cho cosine similarity
             embedding_dim = document_embeddings.shape[1]
-            faiss_index = faiss.IndexFlatL2(embedding_dim)
-            faiss_index.add(document_embeddings.cpu().numpy())
-            print("✅ FAISS index đã được tạo thành công!")
+            faiss_index = faiss.IndexFlatIP(embedding_dim)
+            faiss_index.add(document_embeddings)
+            print("✅ FAISS index (cosine similarity) đã được tạo thành công!")
         else:
             print("❌ Không có dữ liệu để tạo embeddings")
 
@@ -120,88 +124,122 @@ def ensure_embeddings_loaded():
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
+def _is_section_delimiter(text):
+    """Kiểm tra xem dòng text có phải là delimiter của section không"""
+    text_stripped = text.strip()
+    text_upper = text_stripped.upper()
+    
+    # Kiểm tra các pattern delimiter
+    patterns = [
+        r'^PHẦN\s+\d+',           # PHẦN 1, PHẦN 2, etc.
+        r'^CHƯƠNG\s+[IVX\d]+',   # CHƯƠNG I, CHƯƠNG 1, etc.
+        r'^ĐIỀU\s+\d+',          # ĐIỀU 1, ĐIỀU 2, etc.
+        r'^[IVX]+\.',            # I., II., III., IV., V., etc.
+        r'^[IVX]+\s',            # I , II , III , etc.
+    ]
+    
+    for pattern in patterns:
+        if re.match(pattern, text_upper):
+            return True
+    
+    return False
 
-def search_documents(query, k=5, similarity_threshold=0.3, source='default'):
-    """Tìm kiếm đơn giản với SentenceTransformer + FAISS + Context mở rộng"""
-    query_embedding = model.encode([query], convert_to_tensor=True)
 
+def search_documents(query, k=5, similarity_threshold=0.5, source='default'):
+    """Tìm kiếm cải tiến với SentenceTransformer + FAISS + Query expansion + Re-ranking"""
+    
     # Chọn nguồn dữ liệu để tìm kiếm
     if source == 'pdf' and current_pdf_data['faiss_index'] is not None:
+        # Tìm kiếm PDF tạm thời - sử dụng logic cũ với cải tiến cosine
         search_index = current_pdf_data['faiss_index']
         search_embeddings = current_pdf_data['embeddings']
         search_content = current_pdf_data['content']
-    else:
-        ensure_embeddings_loaded()
-        if faiss_index is None:
-            return []
-        search_index = faiss_index
-        search_embeddings = document_embeddings
-        search_content = university_documents
-
-    if search_index is None or len(search_content) == 0:
-        return []
-
-    # Tìm kiếm với FAISS
-    distances, indices = search_index.search(query_embedding.cpu().numpy(), k)
-
-    # Chuẩn bị kết quả và lọc theo ngưỡng
-    results = []
-
-    # Kiểm tra độ tương đồng bằng cosine similarity trực tiếp
-    for i, idx in enumerate(indices[0]):
-        if idx >= len(search_content):
-            continue
-
-        # Tính cosine similarity giữa query và document
-        if hasattr(search_embeddings, 'unsqueeze'):
-            # PyTorch tensor
-            doc_embedding = search_embeddings[idx].unsqueeze(0)
-            similarity = torch.cosine_similarity(query_embedding, doc_embedding).item()
-        else:
-            # Numpy array - convert to tensor
-            doc_embedding_np = search_embeddings[idx:idx+1]
-            doc_embedding = torch.from_numpy(doc_embedding_np)
-            similarity = torch.cosine_similarity(query_embedding, doc_embedding).item()
-
-        # Chỉ thêm kết quả nếu similarity >= threshold
-        if similarity >= similarity_threshold:
-            if source == 'pdf':
+        
+        # Chuẩn hóa query embedding
+        query_embedding = model.encode([query], convert_to_tensor=True)
+        query_np = query_embedding.cpu().numpy()
+        norms = np.linalg.norm(query_np, axis=1, keepdims=True) + 1e-12
+        query_np = query_np / norms
+        
+        # Tìm kiếm với FAISS
+        distances, indices = search_index.search(query_np, k)
+        
+        results = []
+        for i, idx in enumerate(indices[0]):
+            if idx >= len(search_content):
+                continue
+            
+            # Với normalized embeddings và IndexFlatIP, distances chính là cosine similarity
+            similarity = float(distances[0][i])
+            
+            if similarity >= similarity_threshold:
                 content_item = search_content[idx]
-
                 results.append({
                     'index': int(idx),
                     'content': content_item['content'],
                     'page': content_item.get('page', 1),
-                    'score': float(distances[0][i]),
-                    'similarity': float(similarity),
+                    'score': similarity,
+                    'similarity': similarity,
                     'rank': len(results) + 1,
                     'source': 'pdf',
                     'filename': current_pdf_data['filename']
                 })
-            else:
-                # Tạo nội dung mở rộng với 8 documents tiếp theo
-                main_content = search_content[idx]
-                extended_content = [main_content]
-
-                # Thêm 8 documents tiếp theo (nếu có)
-                for next_idx in range(idx + 1, min(idx + 9, len(search_content))):
-                    extended_content.append(search_content[next_idx])
-
-                # Nối tất cả thành một chuỗi
-                full_content = " | ".join(extended_content)
-
-                results.append({
-                    'index': int(idx),
-                    'content': full_content,
-                    'main_content': main_content,  # Nội dung chính để hiển thị preview
-                    'extended_content': extended_content,  # Danh sách chi tiết để hiển thị
-                    'score': float(distances[0][i]),
-                    'similarity': float(similarity),
-                    'rank': len(results) + 1,
-                    'source': 'default'
-                })
-
-    return results
+        
+        return results
+    else:
+        # Tìm kiếm trong dữ liệu chính - sử dụng DocumentManager với cải tiến
+        dm = get_doc_manager()
+        if dm.faiss_index is None:
+            return []
+        
+        # Sử dụng search method đã cải tiến của DocumentManager
+        results = dm.search(query, k, similarity_threshold)
+        
+        # Chuyển đổi format để tương thích với frontend
+        formatted_results = []
+        for result in results:
+            # Tạo nội dung mở rộng với 8 documents tiếp theo (logic cũ)
+            main_content = result['content']
+            extended_content = [main_content]
+            
+            # Thêm 8 documents tiếp theo (nếu có)
+            doc_idx = result['index']
+            for next_idx in range(doc_idx + 1, min(doc_idx + 9, len(dm.documents))):
+                if next_idx < len(dm.documents):
+                    extended_content.append(dm.documents[next_idx])
+            
+            # Nối tất cả thành một chuỗi cho hiển thị
+            full_content = " | ".join(extended_content)
+            
+            # Tạo nội dung mở rộng cho modal (đến khi gặp delimiter)
+            expanded_content_list = [main_content]
+            expanded_content_text = main_content
+            
+            # Tìm nội dung mở rộng đến khi gặp delimiter cho modal
+            for next_idx in range(doc_idx + 1, min(doc_idx + 50, len(dm.documents))):
+                if next_idx < len(dm.documents):
+                    next_doc = dm.documents[next_idx]
+                    
+                    # Kiểm tra xem dòng có bắt đầu với delimiter không
+                    if _is_section_delimiter(next_doc):
+                        break
+                    
+                    expanded_content_list.append(next_doc)
+                    expanded_content_text += "\n" + next_doc
+            
+            formatted_results.append({
+                'index': result['index'],
+                'content': full_content,  # Nội dung 8 documents như cũ
+                'main_content': main_content,
+                'extended_content': extended_content,  # 8 documents cho hiển thị bên ngoài
+                'expanded_content': expanded_content_text,  # Nội dung mở rộng cho modal
+                'score': result['score'],
+                'similarity': result['similarity'],
+                'rank': result['rank'],
+                'source': 'default'
+            })
+        
+        return formatted_results
 
 
 # Hàm trích xuất văn bản từ PDF
@@ -313,12 +351,17 @@ def create_pdf_embeddings(content_list):
     texts = [item['content'] for item in content_list]
 
     # Tạo embeddings
-    embeddings = model.encode(texts, convert_to_tensor=True)
+    tensor = model.encode(texts, convert_to_tensor=True)
+    embs = tensor.cpu().numpy()
+    
+    # Chuẩn hóa embeddings cho cosine similarity
+    norms = np.linalg.norm(embs, axis=1, keepdims=True) + 1e-12
+    embeddings = embs / norms
 
-    # Tạo FAISS index
+    # Tạo FAISS index với Inner Product cho cosine similarity
     embedding_dim = embeddings.shape[1]
-    index = faiss.IndexFlatL2(embedding_dim)
-    index.add(embeddings.cpu().numpy())
+    index = faiss.IndexFlatIP(embedding_dim)
+    index.add(embeddings)
 
     return embeddings, index
 
@@ -1205,4 +1248,4 @@ if __name__ == '__main__':
     # Khởi tạo database
     init_database()
 
-    app.run()
+    app.run(debug=True, host='0.0.0.0', port=5000)
