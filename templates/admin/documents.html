@@ -318,7 +318,7 @@
                             <li><strong>File PDF sẽ được lưu vĩnh viễn vào cơ sở dữ liệu</strong></li>
                             <li>Hệ thống sẽ trích xuất text từ tất cả trang PDF</li>
                             <li>Nội dung sẽ được chia theo paragraph tự nhiên</li>
-                            <li>Chỉ paragraph >= 50 ký tự mới được thêm vào hệ thống</li>
+                            <li>Chỉ paragraph >= 30 ký tự mới được thêm vào hệ thống</li>
                             <li>Hỗ trợ PDF có text (không phải ảnh scan)</li>
                         </ul>
                     </div>
@@ -515,24 +515,123 @@ async function uploadPdfFile() {
 }
 
 // View document detail
-function viewDocument(docId) {
-    // Find document data
-    const row = document.querySelector(`[data-doc-id="${docId}"]`);
-    if (!row) return;
-    
-    // Get document info from the page data (simplified version)
-    const preview = row.querySelector('.document-preview').textContent;
-    
+async function viewDocument(docId) {
+    // Show loading state
     document.getElementById('documentDetail').innerHTML = `
-        <div class="document-info">
-            <h6>Document ID: ${docId}</h6>
-            <p><strong>Preview:</strong></p>
-            <div class="border p-3 bg-light">${preview}</div>
-            <p class="mt-3"><em>Chi tiết đầy đủ sẽ được hiển thị trong phiên bản tiếp theo.</em></p>
+        <div class="text-center py-4">
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Đang tải...</span>
+            </div>
+            <p class="mt-2">Đang tải chi tiết document...</p>
         </div>
     `;
     
-    new bootstrap.Modal(document.getElementById('viewDocumentModal')).show();
+    // Show modal first
+    const modal = new bootstrap.Modal(document.getElementById('viewDocumentModal'));
+    modal.show();
+    
+    try {
+        // Fetch document details from server
+        const response = await fetch(`/admin/document_detail/${docId}`);
+        const data = await response.json();
+        
+        if (response.ok) {
+            // Update modal title
+            document.getElementById('viewDocumentTitle').innerHTML = `
+                <i class="fas fa-eye me-2"></i>Chi tiết document - ID: ${data.id}
+            `;
+            
+            // Display document details
+            document.getElementById('documentDetail').innerHTML = `
+                <div class="document-info">
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <h6><i class="fas fa-info-circle me-2"></i>Thông tin cơ bản</h6>
+                            <table class="table table-sm table-borderless">
+                                <tr>
+                                    <td width="40%"><strong>Document ID:</strong></td>
+                                    <td>${data.id}</td>
+                                </tr>
+                                <tr>
+                                    <td><strong>Độ dài:</strong></td>
+                                    <td>${data.length} ký tự</td>
+                                </tr>
+                                <tr>
+                                    <td><strong>Nguồn:</strong></td>
+                                    <td>
+                                        ${data.source_badge}
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td><strong>Người thêm:</strong></td>
+                                    <td>${data.added_by || 'N/A'}</td>
+                                </tr>
+                                <tr>
+                                    <td><strong>Ngày thêm:</strong></td>
+                                    <td>${data.added_date || 'N/A'}</td>
+                                </tr>
+                            </table>
+                        </div>
+                        <div class="col-md-6">
+                            <h6><i class="fas fa-chart-bar me-2"></i>Thống kê</h6>
+                            <table class="table table-sm table-borderless">
+                                <tr>
+                                    <td width="40%"><strong>Số từ:</strong></td>
+                                    <td>${data.word_count}</td>
+                                </tr>
+                                <tr>
+                                    <td><strong>Số câu:</strong></td>
+                                    <td>${data.sentence_count}</td>
+                                </tr>
+                                <tr>
+                                    <td><strong>Dòng/Trang:</strong></td>
+                                    <td>${data.line_page_info}</td>
+                                </tr>
+                                ${data.source_file ? `
+                                <tr>
+                                    <td><strong>File nguồn:</strong></td>
+                                    <td><code>${data.source_file}</code></td>
+                                </tr>
+                                ` : ''}
+                            </table>
+                        </div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <h6><i class="fas fa-file-alt me-2"></i>Nội dung đầy đủ</h6>
+                        <div class="border rounded p-3" style="max-height: 400px; overflow-y: auto; background-color: #f8f9fa;">
+                            <pre style="white-space: pre-wrap; margin: 0; font-family: inherit;">${data.full_content}</pre>
+                        </div>
+                    </div>
+                    
+                    ${data.metadata_info ? `
+                    <div class="mb-3">
+                        <h6><i class="fas fa-cogs me-2"></i>Metadata</h6>
+                        <div class="bg-light border rounded p-2">
+                            <small class="text-muted">
+                                <pre style="margin: 0; font-size: 0.85em;">${data.metadata_info}</pre>
+                            </small>
+                        </div>
+                    </div>
+                    ` : ''}
+                </div>
+            `;
+        } else {
+            document.getElementById('documentDetail').innerHTML = `
+                <div class="alert alert-danger">
+                    <i class="fas fa-exclamation-triangle me-2"></i>
+                    Lỗi: ${data.error || 'Không thể tải chi tiết document'}
+                </div>
+            `;
+        }
+    } catch (error) {
+        document.getElementById('documentDetail').innerHTML = `
+            <div class="alert alert-danger">
+                <i class="fas fa-exclamation-triangle me-2"></i>
+                Lỗi kết nối server: ${error.message}
+            </div>
+        `;
+    }
 }
 
 // Delete document

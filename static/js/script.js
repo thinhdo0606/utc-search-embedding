@@ -240,7 +240,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
                 contentPreview += `</div>`;
             }
-            hasMoreContent = result.expanded_content && result.expanded_content.length > result.content.length;
+            hasMoreContent = result.modal_content && result.modal_content.length > result.content.length;
         } else {
             // Logic cũ cho PDF hoặc content thông thường
             const sentences = result.content.split(/[.!?]+/).filter(s => s.trim().length > 0);
@@ -497,7 +497,7 @@ document.addEventListener('DOMContentLoaded', function() {
                         <i class="fas fa-file-text"></i> Chi tiết nội dung
                     </div>
                     <div class="result-detail-text">
-                        ${result.source === 'default' && result.extended_content ? 
+                        ${result.source === 'default' && result.modal_content ? 
                             generateModalContent(result) 
                             : `<div class="modal-content-text">${result.content}</div>`
                         }
@@ -600,46 +600,32 @@ document.addEventListener('DOMContentLoaded', function() {
 
 
 
-    // Generate modal content với expanded content (đến khi gặp delimiter) nhưng giao diện giống bên ngoài
+    // Generate modal content với 8 documents + mở rộng đến delimiter
     function generateModalContent(result) {
-        if (!result.expanded_content) return result.content;
+        if (!result.modal_content_list || !result.modal_content_list.length) {
+            return result.content;
+        }
         
-        // Sử dụng expanded_content (đã được mở rộng đến delimiter) thay vì extended_content (chỉ 8 documents)
-        const expandedText = result.expanded_content;
-        
-        // Lấy main content và rút ngắn nó
-        const mainContent = result.main_content || result.content.split(' | ')[0];
-        
-        // Rút ngắn main content (chỉ lấy 2-3 câu đầu)
-        const sentences = mainContent.split(/[.!?]+/).filter(s => s.trim().length > 0);
-        const shortMainContent = sentences.length > 2 ? 
-            sentences.slice(0, 2).join('. ').trim() + '...' : 
-            mainContent;
-        
-        // Tạo phần còn lại từ expanded content (loại bỏ phần main)
-        const remainingContent = expandedText.replace(mainContent, '').trim();
-        const remainingParts = remainingContent.split('\n').filter(part => part.trim().length > 0);
-        
+        // Hiển thị tất cả documents (8 cố định + mở rộng đến delimiter)
         let modalContent = `<div class="modal-main-result">
             <div class="modal-main-header">
                 <strong>📌 Kết quả chính:</strong>
             </div>
-            <div class="modal-main-content">${shortMainContent}</div>
+            <div class="modal-main-content">${result.modal_content_list[0]}</div>
         </div>`;
         
-        // Thêm nội dung mở rộng
-        if (remainingParts.length > 0) {
+        // Hiển thị các documents còn lại
+        if (result.modal_content_list.length > 1) {
             modalContent += `<div class="modal-extended-results">
                 <div class="modal-extended-header">
                     <strong>Nội dung liên quan:</strong>
                 </div>`;
             
-            remainingParts.forEach(part => {
-                if (part.trim()) {
-                    modalContent += `<div class="modal-additional-content">
-                        ${part.trim()}
-                    </div>`;
-                }
+            // Hiển thị tất cả documents từ thứ 2 trở đi
+            result.modal_content_list.slice(1).forEach((doc, index) => {
+                modalContent += `<div class="modal-additional-content">
+                    ${doc}
+                </div>`;
             });
             modalContent += `</div>`;
         }

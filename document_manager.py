@@ -24,6 +24,29 @@ class DocumentManager:
         # Load dữ liệu hiện có
         self.load_existing_data()
     
+    def preprocess_document(self, content):
+        """Preprocessing document/query để xử lý trường hợp viết toàn bộ chữ hoa"""
+        if not content or len(content.strip()) == 0:
+            return content
+            
+        content_stripped = content.strip()
+        
+        # Kiểm tra xem content có viết toàn bộ chữ hoa không
+        # Chỉ xét các ký tự chữ cái (bỏ qua số, dấu câu)
+        letters_only = ''.join([c for c in content_stripped if c.isalpha()])
+        
+        # Giảm ngưỡng để bao gồm cả query ngắn và document dài
+        if len(letters_only) > 3:
+            uppercase_ratio = sum(1 for c in letters_only if c.isupper()) / len(letters_only)
+            
+            # Nếu > 80% là chữ hoa thì coi như viết toàn bộ chữ hoa
+            if uppercase_ratio > 0.8:
+                # Chuyển về chữ thường để đảm bảo consistency
+                processed_content = content_stripped.lower()
+                return processed_content
+        
+        return content_stripped
+    
     def load_existing_data(self):
         """Load dữ liệu từ database"""
         print("Đang load dữ liệu từ database...")
@@ -39,9 +62,12 @@ class DocumentManager:
             db_documents = Document.query.filter_by(is_active=True).order_by(Document.id).all()
             
             if db_documents:
-                print(f"🔄 Đang load {len(db_documents)} documents từ database...")
+                print(f"Đang load {len(db_documents)} documents từ database...")
                 for doc in db_documents:
-                    self.documents.append(doc.content)
+                    # Preprocessing document trước khi thêm vào
+                    processed_content = self.preprocess_document(doc.content)
+                    self.documents.append(processed_content)
+                    
                     self.metadata.append({
                         'id': f'db_{doc.id}',
                         'db_id': doc.id,
@@ -51,115 +77,335 @@ class DocumentManager:
                         'added_by': doc.added_by,
                         'type': 'database',
                         'line_number': doc.line_number,
-                        'page_number': doc.page_number
+                        'page_number': doc.page_number,
+                        'original_content': doc.content  # Lưu nội dung gốc
                     })
-                print(f"✅ Đã load {len(self.documents)} documents từ database")
+                print(f"Đã load {len(self.documents)} documents từ database")
             else:
                 print("Database chưa có documents nào")
                 
         except Exception as e:
-            print(f"❌ Lỗi khi load từ database: {e}")
+            print(f"Lỗi khi load từ database: {e}")
         
         # Rebuild index từ dữ liệu đã load
         if self.documents:
-            print("🔧 Building index từ documents...")
+            print("Building index từ documents...")
             self.rebuild_index()
         else:
             print("Không có documents để build index")
         
         print(f"DocumentManager đã sẵn sàng với {len(self.documents)} documents")
     
-
+    def _split_text_into_segments(self, text, min_length=3):
+        """Chia text thành các document riêng biệt, xử lý xuống dòng giả trong PDF"""
+        if not text or not text.strip():
+            return []
+        
+        # Bước 1: Xử lý xuống dòng đôi trước (đoạn văn thật)
+        # Chia theo xuống dòng đôi để tách các đoạn văn lớn
+        paragraphs = text.split('\n\n')
+        
+        all_segments = []
+        
+        for paragraph in paragraphs:
+            paragraph = paragraph.strip()
+            if not paragraph:
+                continue
+            
+            # Bước 2: Xử lý từng đoạn văn
+            lines = paragraph.split('\n')
+            
+            current_segment = ""
+            
+            for line in lines:
+                line = line.strip()
+                
+                # Bỏ qua dòng trống
+                if not line:
+                    continue
+                
+                # Kiểm tra xem có phải là bắt đầu document mới không
+                if self._is_new_document_start(line, current_segment):
+                    # Lưu segment hiện tại nếu có
+                    if current_segment.strip():
+                        all_segments.append(current_segment.strip())
+                    # Bắt đầu segment mới
+                    current_segment = line
+                else:
+                    # Nối vào segment hiện tại
+                    if current_segment:
+                        current_segment += " " + line
+                    else:
+                        current_segment = line
+            
+            # Thêm segment cuối cùng của đoạn văn này
+            if current_segment.strip():
+                all_segments.append(current_segment.strip())
+                current_segment = ""  # Reset cho đoạn văn tiếp theo
+        
+        return all_segments
     
+    def _is_new_document_start(self, line, current_segment):
+        """Kiểm tra xem dòng có phải là bắt đầu document mới không"""
+        line = line.strip()
+        
+        # Nếu chưa có segment hiện tại, luôn bắt đầu mới
+        if not current_segment:
+            return True
+        
+        # Kiểm tra xem segment hiện tại có kết thúc hoàn chỉnh không
+        current_segment_trimmed = current_segment.strip()
+        
+        if current_segment_trimmed:
+            # 1. Nếu segment hiện tại kết thúc bằng dấu chấm, chấm hỏi, chấm than, dấu hai chấm
+            if current_segment_trimmed.endswith(('.', '!', '?', ':')):
+                return True
+            
+            # 2. Nếu segment hiện tại kết thúc bằng dấu chấm phẩy và dòng mới bắt đầu bằng ký hiệu đặc biệt
+            if current_segment_trimmed.endswith(';'):
+                # Kiểm tra dòng mới có bắt đầu bằng các ký hiệu list không
+                if line.startswith(('+', '-', '*', '•')):
+                    return True
+                # Hoặc bắt đầu bằng chữ hoa (câu mới)
+                if line[0].isupper():
+                    return True
+            
+            # 3. Nếu segment hiện tại kết thúc bằng dấu phẩy và dòng mới là item list mới
+            if current_segment_trimmed.endswith(','):
+                # Dòng mới bắt đầu bằng ký hiệu list
+                if line.startswith(('+', '-', '*', '•')):
+                    return True
+        
+        # 4. Dòng mới bắt đầu bằng các ký hiệu đánh số hoặc list
+        if re.match(r'^[-+*•]\s+', line):  # -, +, *, • 
+            return True
+        
+        # 5. Dòng mới bắt đầu bằng số có dấu chấm (1. 2. 3.)
+        if re.match(r'^\d+\.\s+', line):
+            return True
+        
+        return False
+    
+    def _split_into_sentences(self, text):
+        """Chia text thành các câu riêng biệt"""
+        if not text or not text.strip():
+            return []
+        
+        # Chia theo dấu chấm, chấm hỏi, chấm than, nhưng cẩn thận với số thập phân
+        sentences = []
+        current_sentence = ""
+        
+        # Chia thô theo dấu câu
+        parts = re.split(r'([.!?])', text)
+        
+        for i, part in enumerate(parts):
+            if part in '.!?':
+                current_sentence += part
+                # Kiểm tra xem có phải là kết thúc câu thật không
+                if i + 1 < len(parts):
+                    next_part = parts[i + 1].strip()
+                    # Nếu phần tiếp theo bắt đầu bằng chữ hoa hoặc số, thì là câu mới
+                    if not next_part or next_part[0].isupper() or next_part[0].isdigit():
+                        if len(current_sentence.strip()) > 10:
+                            sentences.append(current_sentence.strip())
+                        current_sentence = ""
+                    # Nếu không, tiếp tục câu hiện tại
+                else:
+                    # Đây là phần cuối cùng
+                    if len(current_sentence.strip()) > 10:
+                        sentences.append(current_sentence.strip())
+                    current_sentence = ""
+            else:
+                current_sentence += part
+        
+        # Thêm phần còn lại nếu có
+        if current_sentence.strip():
+            sentences.append(current_sentence.strip())
+        
+        return [s for s in sentences if len(s.strip()) > 10]
+    
+    def _is_document_separator(self, line):
+        """Kiểm tra xem dòng có phải là separator giữa các document không"""
+        line = line.strip()
+        
+        # Các pattern cho tiêu đề/đầu mục mới
+        separator_patterns = [
+            r'^[A-ZÀÁẠẢÃÂẦẤẬẨẪĂẰẮẶẲẴÈÉẸẺẼÊỀẾỆỂỄÌÍỊỈĨÒÓỌỎÕÔỒỐỘỔỖƠỜỚỢỞỠÙÚỤỦŨƯỪỨỰỬỮỲÝỴỶỸĐ\s]+$',  # Toàn bộ chữ hoa
+            r'^(PHẦN|CHƯƠNG|ĐIỀU|MỤC|BÀI|Điều)\s*\d+',  # PHẦN 1, CHƯƠNG 1, Điều 11, ...
+            r'^\d+\.',  # 1. 2. 3. ...
+            r'^[IVX]+\.',  # I. II. III. ...
+            r'^(LỜI NÓI ĐẦU|BAN BIÊN TẬP|MỤC LỤC|TÀI LIỆU THAM KHẢO|PHỤ LỤC)$',
+            r'^[A-Z][^.]*:$',  # Tiêu đề kết thúc bằng dấu hai chấm
+        ]
+        
+        for pattern in separator_patterns:
+            if re.match(pattern, line, re.IGNORECASE):
+                return True
+        
+        return False
 
-
+    def _is_new_paragraph_start(self, line):
+        """Kiểm tra xem dòng có phải là bắt đầu của paragraph mới không"""
+        line = line.strip()
+        
+        # Các pattern cho tiêu đề mới
+        new_paragraph_patterns = [
+            r'^[A-ZÀÁẠẢÃÂẦẤẬẨẪĂẰẮẶẲẴÈÉẸẺẼÊỀẾỆỂỄÌÍỊỈĨÒÓỌỎÕÔỒỐỘỔỖƠỜỚỢỞỠÙÚỤỦŨƯỪỨỰỬỮỲÝỴỶỸĐ\s]+$',  # Toàn bộ chữ hoa
+            r'^(PHẦN|CHƯƠNG|ĐIỀU|MỤC|BÀI)\s*\d+',  # PHẦN 1, CHƯƠNG 1, ...
+            r'^\d+\.',  # 1. 2. 3. ...
+            r'^[IVX]+\.',  # I. II. III. ...
+            r'^(LỜI NÓI ĐẦU|BAN BIÊN TẬP|MỤC LỤC|TÀI LIỆU THAM KHẢO|PHỤ LỤC)$',
+        ]
+        
+        import re
+        for pattern in new_paragraph_patterns:
+            if re.match(pattern, line, re.IGNORECASE):
+                return True
+        
+        return False
+    
+    def _is_meaningful_short_line(self, line):
+        """Kiểm tra xem dòng ngắn có phải là tiêu đề hoặc có ý nghĩa không"""
+        line = line.strip()
+        
+        # Các pattern cho tiêu đề, heading
+        title_patterns = [
+            r'^[A-ZÀÁẠẢÃÂẦẤẬẨẪĂẰẮẶẲẴÈÉẸẺẼÊỀẾỆỂỄÌÍỊỈĨÒÓỌỎÕÔỒỐỘỔỖƠỜỚỢỞỠÙÚỤỦŨƯỪỨỰỬỮỲÝỴỶỸĐ\s]+$',  # Toàn bộ chữ hoa
+            r'^(PHẦN|CHƯƠNG|ĐIỀU|MỤC|BÀI|Điều)\s*\d+',  # PHẦN 1, CHƯƠNG 1, Điều 11, ...
+            r'^\d+\.',  # 1. 2. 3. ...
+            r'^[IVX]+\.',  # I. II. III. ...
+            r'^(LỜI NÓI ĐẦU|BAN BIÊN TẬP|MỤC LỤC|TÀI LIỆU THAM KHẢO|PHỤ LỤC|Thông báo)$',
+            r'^[A-Z][^.]*:$',  # Tiêu đề kết thúc bằng dấu hai chấm
+        ]
+        
+        for pattern in title_patterns:
+            if re.match(pattern, line, re.IGNORECASE):
+                return True
+        
+        # Dòng có ít nhất 5 ký tự và chứa chữ cái
+        if len(line) >= 5 and re.search(r'[a-zA-ZÀ-ỹ]', line):
+            return True
+            
+        return False
+    
     
     def add_text_document(self, text, metadata=None, user_id=None):
-        """Thêm document text mới (lưu vào database)"""
+        """Thêm document text mới (chia thành các đoạn nhỏ và lưu vào database)"""
         if not text or not text.strip():
             return False, "Nội dung rỗng"
         
         try:
-            # Tạo source_info từ metadata
+            # Chia text thành các đoạn nhỏ hơn
+            text_segments = self._split_text_into_segments(text.strip())
+            
+            if not text_segments:
+                return False, "Không thể chia text thành các đoạn"
+            
+            added_count = 0
             source_info = metadata if metadata else {}
             
-            # Tạo document trong database
-            doc = Document.create_from_text(
-                content=text.strip(),
-                source_type='manual',
-                source_file=None,
-                source_info=source_info,
-                added_by=user_id
-            )
+            for i, segment in enumerate(text_segments):
+                # Lưu tất cả segments không trống, giống data.txt
+                if segment.strip():  # Chỉ cần không trống
+                    try:
+                        # Tạo document trong database cho từng đoạn
+                        doc = Document.create_from_text(
+                            content=segment.strip(),
+                            source_type='manual',
+                            source_file=None,
+                            source_info={**source_info, 'segment_index': i},
+                            added_by=user_id,
+                            line_number=i + 1
+                        )
+                        
+                        db.session.add(doc)
+                        db.session.commit()
+                        
+                        # Preprocessing và thêm vào memory
+                        processed_content = self.preprocess_document(segment.strip())
+                        self.documents.append(processed_content)
+                        doc_metadata = {
+                            'id': f'db_{doc.id}',
+                            'db_id': doc.id,
+                            'source': 'manual',
+                            'added_date': doc.added_date.isoformat(),
+                            'added_by': user_id,
+                            'type': 'database',
+                            'length': len(segment.strip()),
+                            'segment_index': i,
+                            'original_content': segment.strip()
+                        }
+                        self.metadata.append(doc_metadata)
+                        
+                        # Cập nhật index
+                        success = self._add_to_index(processed_content)
+                        if success:
+                            added_count += 1
+                        else:
+                            # Rollback nếu lỗi index
+                            self.documents.pop()
+                            self.metadata.pop()
+                            
+                    except Exception as doc_error:
+                        print(f"Lỗi thêm đoạn {i}: {doc_error}")
+                        db.session.rollback()
+                        continue
             
-            # Lưu vào database
-            db.session.add(doc)
-            db.session.commit()
-            
-            # Thêm vào memory để có thể search ngay
-            self.documents.append(text.strip())
-            doc_metadata = {
-                'id': f'db_{doc.id}',
-                'db_id': doc.id,
-                'source': 'manual',
-                'added_date': doc.added_date.isoformat(),
-                'added_by': user_id,
-                'type': 'database',
-                'length': len(text.strip())
-            }
-            self.metadata.append(doc_metadata)
-            
-            # Cập nhật index
-            success = self._add_to_index(text.strip())
-            
-            if success:
-                return True, f"Đã thêm document ID: {doc.id}"
+            if added_count > 0:
+                return True, f"Đã thêm {added_count}/{len(text_segments)} đoạn text"
             else:
-                # Rollback nếu lỗi index
-                self.documents.pop()
-                self.metadata.pop()
-                return False, "Lỗi khi cập nhật search index"
+                return False, "Không thể thêm đoạn text nào"
                 
         except Exception as e:
             db.session.rollback()
             return False, f"Lỗi lưu database: {str(e)}"
     
     def add_documents_from_pdf_file(self, file_path, user_id=None):
-        """Thêm documents từ file PDF (lưu vào database)"""
+        """Thêm documents từ file PDF (chia theo từng dòng thành documents riêng biệt)"""
         if not os.path.exists(file_path):
             return False, "File không tồn tại"
         
         try:
             if file_path.endswith('.pdf'):
-                documents = self._extract_from_pdf(file_path)
+                raw_documents = self._extract_from_pdf(file_path)
             else:
                 return False, "Chỉ hỗ trợ file .pdf"
             
-            if not documents:
+            if not raw_documents:
                 return False, "Không tìm thấy nội dung trong file PDF"
             
-            # Thêm từng document vào database
+            # Gộp tất cả nội dung PDF thành một text lớn
+            full_text = "\n".join([doc for doc in raw_documents if doc.strip()])
+            
+            # Chia thành các đoạn văn riêng biệt
+            text_segments = self._split_text_into_segments(full_text)
+            
+            if not text_segments:
+                return False, "Không thể chia PDF thành các đoạn văn"
+            
             added_count = 0
             source_file = os.path.basename(file_path)
             
-            for i, doc_text in enumerate(documents):
-                if len(doc_text.strip()) > 50:  # Chỉ thêm document đủ dài
+            for i, segment in enumerate(text_segments):
+                # Lưu tất cả segments không trống, giống data.txt
+                if segment.strip():  # Chỉ cần không trống
                     try:
-                        # Tạo document trong database
+                        # Tạo document trong database cho từng đoạn
                         doc = Document.create_from_text(
-                            content=doc_text.strip(),
+                            content=segment.strip(),
                             source_type='pdf',
                             source_file=source_file,
-                            source_info={'pdf_extract_index': i},
+                            source_info={'pdf_segment_index': i, 'total_segments': len(text_segments)},
                             added_by=user_id,
-                            page_number=i + 1  # Giả định mỗi document từ 1 page
+                            line_number=i + 1
                         )
                         
                         db.session.add(doc)
                         db.session.commit()
                         
-                        # Thêm vào memory
-                        self.documents.append(doc_text.strip())
+                        # Preprocessing và thêm vào memory
+                        processed_content = self.preprocess_document(segment.strip())
+                        self.documents.append(processed_content)
                         self.metadata.append({
                             'id': f'db_{doc.id}',
                             'db_id': doc.id,
@@ -168,19 +414,29 @@ class DocumentManager:
                             'added_date': doc.added_date.isoformat(),
                             'added_by': user_id,
                             'type': 'database',
-                            'page_number': i + 1
+                            'segment_index': i,
+                            'total_segments': len(text_segments),
+                            'original_content': segment.strip()
                         })
                         
                         # Cập nhật index
-                        self._add_to_index(doc_text.strip())
-                        added_count += 1
+                        success = self._add_to_index(processed_content)
+                        if success:
+                            added_count += 1
+                        else:
+                            # Rollback nếu lỗi index
+                            self.documents.pop()
+                            self.metadata.pop()
                         
                     except Exception as doc_error:
-                        print(f"Lỗi thêm document {i}: {doc_error}")
+                        print(f"Lỗi thêm đoạn PDF {i}: {doc_error}")
                         db.session.rollback()
                         continue
             
-            return True, f"Đã thêm {added_count}/{len(documents)} documents từ file PDF"
+            if added_count > 0:
+                return True, f"Đã thêm {added_count}/{len(text_segments)} đoạn từ file PDF"
+            else:
+                return False, "Không thể thêm đoạn nào từ file PDF"
             
         except Exception as e:
             return False, f"Lỗi xử lý file PDF: {str(e)}"
@@ -217,7 +473,7 @@ class DocumentManager:
                         paragraphs = page_text.split('\n\n')
                         for para in paragraphs:
                             para = para.strip()
-                            if len(para) > 50:  # Chỉ lấy paragraph đủ dài
+                            if len(para) > 30:
                                 text_content.append(para)
                 
                 return text_content
@@ -261,7 +517,7 @@ class DocumentManager:
             print("❌ Không có documents để rebuild")
             return
         
-        print(f"🔧 Rebuilding index cho {len(self.documents)} documents...")
+        print(f"Rebuilding index cho {len(self.documents)} documents...")
         
         try:
             # Reset trước khi rebuild
@@ -269,30 +525,29 @@ class DocumentManager:
             self.faiss_index = None
             
             # Tạo embeddings cho tất cả documents
-            print("🔄 Tạo embeddings...")
+            print("Tạo embeddings...")
             embeddings = self.model.encode(self.documents, convert_to_tensor=True)
             embeddings_np = embeddings.cpu().numpy()
             
             # Chuẩn hóa để sử dụng cosine similarity
             norms = np.linalg.norm(embeddings_np, axis=1, keepdims=True) + 1e-12
             self.embeddings = embeddings_np / norms
-            print(f"✅ Embeddings shape: {self.embeddings.shape}")
+            print(f"Embeddings shape: {self.embeddings.shape}")
             
             # Tạo FAISS index mới - sử dụng Inner Product cho cosine similarity
-            print("🔄 Tạo FAISS index (cosine similarity)...")
+            print("Tạo FAISS index (cosine similarity)...")
             embedding_dim = self.embeddings.shape[1]
             self.faiss_index = faiss.IndexFlatIP(embedding_dim)
             self.faiss_index.add(self.embeddings)
-            print(f"✅ FAISS index với {self.faiss_index.ntotal} vectors")
+            print(f"FAISS index với {self.faiss_index.ntotal} vectors")
             
-            print(f"✅ Rebuild hoàn thành: {len(self.documents)} documents")
+            print(f"Rebuild hoàn thành: {len(self.documents)} documents")
             
             # Lưu index
             self.save_index()
             
         except Exception as e:
-            print(f"❌ Lỗi rebuild index: {e}")
-            # Reset về trạng thái an toàn
+            print(f"Lỗi rebuild index: {e}")
             self.embeddings = None
             self.faiss_index = None
     
@@ -309,8 +564,11 @@ class DocumentManager:
             self.rebuild_index()
         
         try:
-            # Tạo embedding cho query gốc (không expand quá rộng)
-            original_embedding = self.model.encode([query], convert_to_tensor=True)
+            # Chuẩn hóa query giống như document để đảm bảo consistency
+            processed_query = self.preprocess_document(query)
+            
+            # Tạo embedding cho query đã được chuẩn hóa
+            original_embedding = self.model.encode([processed_query], convert_to_tensor=True)
             original_np = original_embedding.cpu().numpy()
             
             # Chuẩn hóa query embedding
@@ -321,7 +579,7 @@ class DocumentManager:
             search_k = min(k * 5, len(self.documents))
             distances, indices = self.faiss_index.search(query_np, search_k)
         except Exception as e:
-            print(f"❌ Lỗi trong quá trình search: {e}")
+            print(f"Lỗi trong quá trình search: {e}")
             return []
         
         candidates = []
@@ -332,11 +590,11 @@ class DocumentManager:
             # Với normalized embeddings và IndexFlatIP, distances chính là cosine similarity
             similarity = float(distances[0][i])
             
-            # Áp dụng ngưỡng similarity cao hơn
+            # Áp dụng ngưỡng similarity
             if similarity >= similarity_threshold:
                 doc_content = self.documents[idx]
                 
-                # Tính lexical overlap score (quan trọng hơn)
+                # Tính lexical overlap score (quan trọng)
                 overlap_score = self._calculate_keyword_overlap(query, doc_content)
                 
                 # Kiểm tra relevance contextual
@@ -350,13 +608,13 @@ class DocumentManager:
                 # - 30% keyword overlap  
                 # - 20% context relevance
                 # - Trừ noise penalty
-                combined_score = (0.5 * similarity + 
-                                0.3 * overlap_score + 
-                                0.2 * context_score - 
+                combined_score = (0.5 * similarity +
+                                0.3 * overlap_score +
+                                0.2 * context_score -
                                 0.1 * noise_penalty)
-                
+
                 # Chỉ lấy những kết quả có điểm tổng hợp cao
-                if combined_score >= 0.4:  # Ngưỡng tổng hợp cao hơn
+                if combined_score >= 0.4:
                     candidates.append({
                         'index': int(idx),
                         'content': doc_content,
@@ -366,7 +624,7 @@ class DocumentManager:
                         'overlap_score': overlap_score,
                         'context_score': context_score,
                         'noise_penalty': noise_penalty,
-                        'rank': 0,  # Will be set after sorting
+                        'rank': 0,
                         'source': 'default'
                     })
         
@@ -394,17 +652,49 @@ class DocumentManager:
         
         # Từ điển đồng nghĩa cho các thuật ngữ phổ biến
         synonyms_map = {
-            'rèn luyện': ['điểm rèn luyện', 'đánh giá rèn luyện', 'DRL', 'điểm DRL', 'rèn luyện sinh viên', 'ĐÁNH GIÁ RÈN LUYỆN SINH VIÊN'],
-            'cố vấn học tập': ['cố vấn', 'tư vấn học tập', 'đánh giá cố vấn', 'cố vấn hoc tap', 'ĐÁNH GIÁ CỐ VẤN HỌC TẬP'],
+            'rèn luyện': ['điểm rèn luyện', 'đánh giá rèn luyện', 'DRL', 'điểm DRL', 'rèn luyện sinh viên', 'RLSV'],
+            'cố vấn học tập': ['cố vấn', 'tư vấn học tập', 'đánh giá cố vấn', 'cố vấn hoc tap', 'CVHT'],
             'học phí': ['mức học phí', 'thu học phí', 'miễn giảm học phí', 'hoc phi'],
-            'học bổng': ['hoc bong', 'học bổng khuyến khích', 'học bổng khuyến học'],
-            'sinh viên': ['sinh vien', 'học sinh', 'hoc sinh'],
-            'giảng viên': ['giang vien', 'thầy cô', 'giáo viên'],
+            'học bổng': ['hoc bong', 'học bổng khuyến khích', 'học bổng khuyến học', 'HBCS', 'học bổng chính sách'],
+            'sinh viên': ['sinh vien', 'học sinh', 'hoc sinh', 'SV'],
+            'giảng viên': ['giang vien', 'thầy cô', 'giáo viên', 'GV'],
             'tuyển sinh': ['tuyen sinh', 'xét tuyển', 'thi tuyển'],
-            'đào tạo': ['dao tao', 'chương trình đào tạo', 'chuong trinh dao tao'],
+            'đào tạo': ['dao tao', 'chương trình đào tạo', 'chuong trinh dao tao', 'ĐTĐH', 'đào tạo đại học'],
             'thư viện': ['thu vien', 'library', 'kho sách'],
-            'ký túc xá': ['ki tuc xa', 'ktx', 'dormitory'],
-            'hoạt động': ['hoat dong', 'sinh hoạt', 'tổ chức']
+            'ký túc xá': ['ki tuc xa', 'ktx', 'dormitory', 'KTX'],
+            'hoạt động': ['hoat dong', 'sinh hoạt', 'tổ chức'],
+            
+            # Các từ viết tắt mới
+            'bảo hiểm y tế': ['BHYT', 'bảo hiểm y tế', 'bao hiem y te'],
+            'ban giám hiệu': ['BGH', 'ban giám hiệu', 'ban giam hieu'],
+            'bác sĩ': ['Bs', 'bác sĩ', 'bac si', 'BS'],
+            'cán bộ công nhân viên': ['CB-CNV', 'cán bộ công nhân viên', 'can bo cong nhan vien', 'CB CNV'],
+            'chứng minh nhân dân': ['CMND', 'chứng minh nhân dân', 'chung minh nhan dan', 'căn cước công dân', 'CCCD'],
+            'công nghệ thông tin': ['CNTT', 'công nghệ thông tin', 'cong nghe thong tin'],
+            'công tác chính trị và sinh viên': ['CTCT&SV', 'công tác chính trị và sinh viên', 'CTCT SV'],
+            'đồ án tốt nghiệp': ['ĐATN', 'đồ án tốt nghiệp', 'do an tot nghiep'],
+            'đại học': ['ĐH', 'đại học', 'dai hoc'],
+            'đại học giao thông vận tải': ['ĐHGTVT', 'đại học giao thông vận tải', 'UTC', 'University of Transport and Communications'],
+            'điện thoại': ['ĐT', 'điện thoại', 'dien thoai'],
+            'giao thông vận tải': ['GTVT', 'giao thông vận tải', 'giao thong van tai'],
+            'hội sinh viên': ['HSV', 'hội sinh viên', 'hoi sinh vien'],
+            'khám chữa bệnh': ['KCB', 'khám chữa bệnh', 'kham chua benh'],
+            'khuyến khích học tập': ['KKHT', 'khuyến khích học tập', 'khuyen khich hoc tap'],
+            'nghiên cứu khoa học': ['NCKH', 'nghiên cứu khoa học', 'nghien cuu khoa hoc'],
+            'nghị định': ['NĐ', 'nghị định', 'nghi dinh'],
+            'ngân hàng chính sách xã hội': ['NHCSXH', 'ngân hàng chính sách xã hội'],
+            'quản lý': ['QL', 'quản lý', 'quan ly'],
+            'quản lý đào tạo': ['QLĐT', 'quản lý đào tạo', 'quan ly dao tao'],
+            'tài chính kế toán': ['TCKT', 'tài chính kế toán', 'tai chinh ke toan'],
+            'trợ cấp xã hội': ['TCXH', 'trợ cấp xã hội', 'tro cap xa hoi'],
+            'tài liệu': ['TL', 'tài liệu', 'tai lieu'],
+            'tài liệu tham khảo': ['TLTK', 'tài liệu tham khảo', 'tai lieu tham khao'],
+            'thanh niên cộng sản': ['TNCS', 'thanh niên cộng sản', 'thanh nien cong san'],
+            'trang thông tin điện tử': ['TTĐT', 'trang thông tin điện tử', 'trang thong tin dien tu'],
+            'thanh toán tài sản': ['TTTS', 'thanh toán tài sản', 'thanh toan tai san'],
+            'thủ tướng chính phủ': ['TTg', 'thủ tướng chính phủ', 'thu tuong chinh phu'],
+            'ủy ban nhân dân': ['UBND', 'ủy ban nhân dân', 'uy ban nhan dan'],
+            'văn phòng': ['VP', 'văn phòng', 'van phong']
         }
         
         # Tìm các từ khóa phù hợp và thêm đồng nghĩa
@@ -431,7 +721,48 @@ class DocumentManager:
         
         # Tính tỷ lệ từ trùng khớp
         intersection = len(query_words & doc_words)
-        return intersection / len(query_words)
+        basic_overlap = intersection / len(query_words)
+
+        abbreviation_bonus = self._check_abbreviation_match(query, document)
+        
+        return min(basic_overlap + abbreviation_bonus * 0.1, 1.0)
+    
+    def _check_abbreviation_match(self, query, document):
+        """Kiểm tra match giữa từ viết tắt và từ đầy đủ"""
+        query_lower = query.lower().strip()
+        doc_lower = document.lower()
+        
+        # Từ điển ánh xạ trực tiếp từ viết tắt sang từ đầy đủ
+        abbreviations = {
+            'bhyt': 'bảo hiểm y tế',
+            'bgh': 'ban giám hiệu', 
+            'bs': 'bác sĩ',
+            'sv': 'sinh viên',
+            'gv': 'giảng viên',
+            'ktx': 'ký túc xá',
+            'cntt': 'công nghệ thông tin',
+            'cvht': 'cố vấn học tập',
+            'rlsv': 'rèn luyện sinh viên',
+            'đhgtvt': 'đại học giao thông vận tải',
+            'utc': 'university of transport and communications',
+            'nckh': 'nghiên cứu khoa học',
+            'đatn': 'đồ án tốt nghiệp',
+            'kkht': 'khuyến khích học tập',
+            'hbcs': 'học bổng chính sách',
+            'hsv': 'hội sinh viên'
+        }
+        
+        # Kiểm tra nếu query là từ viết tắt và document chứa từ đầy đủ
+        if query_lower in abbreviations:
+            if abbreviations[query_lower] in doc_lower:
+                return 1.0
+        
+        # Kiểm tra ngược lại: query là từ đầy đủ, document chứa từ viết tắt
+        for abbr, full_form in abbreviations.items():
+            if full_form in query_lower and abbr in doc_lower:
+                return 1.0
+        
+        return 0.0
     
     def _calculate_context_relevance(self, query, document):
         """Tính điểm liên quan theo ngữ cảnh"""
@@ -528,8 +859,15 @@ class DocumentManager:
         doc_words = set(re.findall(r'\b\w{3,}\b', doc_lower))
         overlap = len(query_words & doc_words)
         
-        # Cần có ít nhất 1 từ trùng khớp hoặc semantic similarity cao
-        return overlap >= 1 or len(query_words) == 0
+        # Điều kiện linh hoạt hơn cho query dài
+        if len(query_words) == 0:
+            return True
+        elif len(query_words) <= 3:
+            # Query ngắn: cần ít nhất 1 từ match
+            return overlap >= 1
+        else:
+            # Query dài: cần ít nhất 2 từ match hoặc tỷ lệ match >= 40%
+            return overlap >= 2 or (overlap / len(query_words)) >= 0.4
     
     def delete_document(self, doc_id):
         """Xóa document theo ID (từ database và memory)"""

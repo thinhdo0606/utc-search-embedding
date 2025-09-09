@@ -57,7 +57,7 @@ doc_manager = None
 def get_doc_manager():
     global doc_manager
     if doc_manager is None:
-        print("⚠️ DocumentManager chưa được khởi tạo! Đang khởi tạo...")
+        print("DocumentManager chưa được khởi tạo! Đang khởi tạo...")
         doc_manager = DocumentManager(model)
     return doc_manager
 
@@ -65,9 +65,9 @@ def init_doc_manager():
     """Khởi tạo DocumentManager ngay khi start app"""
     global doc_manager
     if doc_manager is None:
-        print("🔧 Khởi tạo DocumentManager...")
+        print("Khởi tạo DocumentManager...")
         doc_manager = DocumentManager(model)
-        print(f"✅ DocumentManager đã sẵn sàng với {len(doc_manager.documents)} documents")
+        print(f"DocumentManager đã sẵn sàng với {len(doc_manager.documents)} documents")
     return doc_manager
 
 
@@ -115,9 +115,9 @@ def ensure_embeddings_loaded():
             embedding_dim = document_embeddings.shape[1]
             faiss_index = faiss.IndexFlatIP(embedding_dim)
             faiss_index.add(document_embeddings)
-            print("✅ FAISS index (cosine similarity) đã được tạo thành công!")
+            print("FAISS index (cosine similarity) đã được tạo thành công!")
         else:
-            print("❌ Không có dữ liệu để tạo embeddings")
+            print("Không có dữ liệu để tạo embeddings")
 
 
 # Hàm kiểm tra file extension
@@ -150,13 +150,17 @@ def search_documents(query, k=5, similarity_threshold=0.5, source='default'):
     
     # Chọn nguồn dữ liệu để tìm kiếm
     if source == 'pdf' and current_pdf_data['faiss_index'] is not None:
-        # Tìm kiếm PDF tạm thời - sử dụng logic cũ với cải tiến cosine
+        # Tìm kiếm PDF tạm thời
         search_index = current_pdf_data['faiss_index']
         search_embeddings = current_pdf_data['embeddings']
         search_content = current_pdf_data['content']
         
+        # Chuẩn hóa query giống như document để đảm bảo consistency
+        dm = get_doc_manager()
+        processed_query = dm.preprocess_document(query)
+        
         # Chuẩn hóa query embedding
-        query_embedding = model.encode([query], convert_to_tensor=True)
+        query_embedding = model.encode([processed_query], convert_to_tensor=True)
         query_np = query_embedding.cpu().numpy()
         norms = np.linalg.norm(query_np, axis=1, keepdims=True) + 1e-12
         query_np = query_np / norms
@@ -198,41 +202,58 @@ def search_documents(query, k=5, similarity_threshold=0.5, source='default'):
         # Chuyển đổi format để tương thích với frontend
         formatted_results = []
         for result in results:
-            # Tạo nội dung mở rộng với 8 documents tiếp theo (logic cũ)
+            # Lấy nội dung gốc từ metadata nếu có, không thì dùng processed content
             main_content = result['content']
-            extended_content = [main_content]
+            original_main_content = main_content
+            
+            # Kiểm tra xem có metadata với original_content không
+            if result['index'] < len(dm.metadata) and 'original_content' in dm.metadata[result['index']]:
+                original_main_content = dm.metadata[result['index']]['original_content']
+            
+            extended_content = [original_main_content]
             
             # Thêm 8 documents tiếp theo (nếu có)
             doc_idx = result['index']
             for next_idx in range(doc_idx + 1, min(doc_idx + 9, len(dm.documents))):
                 if next_idx < len(dm.documents):
-                    extended_content.append(dm.documents[next_idx])
+                    # Lấy original content nếu có
+                    next_content = dm.documents[next_idx]
+                    if next_idx < len(dm.metadata) and 'original_content' in dm.metadata[next_idx]:
+                        next_content = dm.metadata[next_idx]['original_content']
+                    extended_content.append(next_content)
             
             # Nối tất cả thành một chuỗi cho hiển thị
             full_content = " | ".join(extended_content)
             
-            # Tạo nội dung mở rộng cho modal (đến khi gặp delimiter)
-            expanded_content_list = [main_content]
-            expanded_content_text = main_content
+            # Tạo nội dung mở rộng cho modal (8 documents + mở rộng đến delimiter)
+            modal_content_list = extended_content.copy()  # Bắt đầu với 8 documents
             
-            # Tìm nội dung mở rộng đến khi gặp delimiter cho modal
-            for next_idx in range(doc_idx + 1, min(doc_idx + 50, len(dm.documents))):
+            # Tiếp tục thêm documents từ vị trí thứ 9 đến khi gặp delimiter
+            for next_idx in range(doc_idx + 9, min(doc_idx + 50, len(dm.documents))):
                 if next_idx < len(dm.documents):
                     next_doc = dm.documents[next_idx]
+                    next_original = next_doc
                     
-                    # Kiểm tra xem dòng có bắt đầu với delimiter không
+                    # Lấy original content nếu có
+                    if next_idx < len(dm.metadata) and 'original_content' in dm.metadata[next_idx]:
+                        next_original = dm.metadata[next_idx]['original_content']
+                    
+                    # Kiểm tra delimiter với processed content (để logic không thay đổi)
                     if _is_section_delimiter(next_doc):
                         break
                     
-                    expanded_content_list.append(next_doc)
-                    expanded_content_text += "\n" + next_doc
+                    modal_content_list.append(next_original)
+            
+            # Tạo text cho modal
+            modal_content_text = "\n".join(modal_content_list)
             
             formatted_results.append({
                 'index': result['index'],
                 'content': full_content,  # Nội dung 8 documents như cũ
-                'main_content': main_content,
+                'main_content': original_main_content,
                 'extended_content': extended_content,  # 8 documents cho hiển thị bên ngoài
-                'expanded_content': expanded_content_text,  # Nội dung mở rộng cho modal
+                'modal_content': modal_content_text,  # Nội dung đầy đủ cho modal (8 docs + mở rộng)
+                'modal_content_list': modal_content_list,  # Danh sách documents cho modal
                 'score': result['score'],
                 'similarity': result['similarity'],
                 'rank': result['rank'],
@@ -347,8 +368,9 @@ def create_pdf_embeddings(content_list):
     if not content_list:
         return None, None
 
-    # Lấy nội dung text từ content_list
-    texts = [item['content'] for item in content_list]
+    # Lấy nội dung text từ content_list và áp dụng preprocessing
+    dm = get_doc_manager()
+    texts = [dm.preprocess_document(item['content']) for item in content_list]
 
     # Tạo embeddings
     tensor = model.encode(texts, convert_to_tensor=True)
@@ -1202,6 +1224,127 @@ def export_documents():
         return redirect(url_for('admin_documents'))
 
 
+@app.route('/admin/document_detail/<doc_id>')
+@login_required
+def get_document_detail(doc_id):
+    """API lấy chi tiết document"""
+    if not current_user.is_teacher():
+        return jsonify({'error': 'Không có quyền truy cập'}), 403
+
+    try:
+        # Tìm document trong DocumentManager
+        dm = get_doc_manager()
+        
+        # Tìm document theo ID
+        doc_found = None
+        doc_index = None
+        
+        for i, metadata in enumerate(dm.metadata):
+            if metadata.get('id') == doc_id:
+                doc_found = metadata
+                doc_index = i
+                break
+        
+        if not doc_found:
+            return jsonify({'error': 'Không tìm thấy document'}), 404
+        
+        # Lấy nội dung document
+        if doc_index < len(dm.documents):
+            # Lấy nội dung đã xử lý
+            processed_content = dm.documents[doc_index]
+            # Lấy nội dung gốc nếu có
+            original_content = doc_found.get('original_content', processed_content)
+        else:
+            return jsonify({'error': 'Document index không hợp lệ'}), 404
+        
+        # Tạo source badge HTML
+        source = doc_found.get('source', 'unknown')
+        source_file = doc_found.get('source_file')
+        
+        if source == 'data.txt':
+            source_badge = '<span class="badge bg-primary"><i class="fas fa-file"></i> Dữ liệu gốc</span>'
+        elif source == 'manual':
+            source_badge = '<span class="badge bg-success"><i class="fas fa-keyboard"></i> Tự nhập</span>'
+        elif source == 'pdf':
+            source_badge = '<span class="badge bg-warning text-dark"><i class="fas fa-file-pdf"></i> PDF Upload</span>'
+        elif source_file:
+            source_badge = f'<span class="badge bg-warning text-dark"><i class="fas fa-upload"></i> {source_file}</span>'
+        else:
+            source_badge = f'<span class="badge bg-secondary"><i class="fas fa-question"></i> {source}</span>'
+        
+        # Thống kê nội dung
+        word_count = len(original_content.split())
+        sentence_count = len([s for s in original_content.split('.') if s.strip()])
+        
+        # Thông tin dòng/trang
+        line_number = doc_found.get('line_number')
+        page_number = doc_found.get('page_number')
+        
+        if line_number and page_number:
+            line_page_info = f"Dòng {line_number}, Trang {page_number}"
+        elif line_number:
+            line_page_info = f"Dòng {line_number}"
+        elif page_number:
+            line_page_info = f"Trang {page_number}"
+        else:
+            line_page_info = "N/A"
+        
+        # Format ngày thêm
+        added_date = doc_found.get('added_date')
+        if added_date:
+            try:
+                # Parse ISO format và format lại
+                from datetime import datetime
+                dt = datetime.fromisoformat(added_date.replace('Z', '+00:00'))
+                formatted_date = dt.strftime('%d/%m/%Y %H:%M:%S')
+            except:
+                formatted_date = added_date
+        else:
+            formatted_date = 'N/A'
+        
+        # Format người thêm
+        added_by = doc_found.get('added_by')
+        if added_by:
+            if str(added_by).isdigit():
+                # Tìm user theo ID
+                user = db.session.get(User, int(added_by))
+                if user:
+                    added_by_display = f"{user.full_name} (ID: {added_by})"
+                else:
+                    added_by_display = f"User ID: {added_by}"
+            else:
+                added_by_display = str(added_by)
+        else:
+            added_by_display = 'Hệ thống'
+        
+        # Tạo metadata info để hiển thị
+        metadata_info = None
+        if doc_found:
+            import json
+            # Loại bỏ các field đã hiển thị ở trên
+            display_metadata = {k: v for k, v in doc_found.items() 
+                              if k not in ['id', 'original_content', 'added_date', 'added_by', 'source', 'source_file']}
+            if display_metadata:
+                metadata_info = json.dumps(display_metadata, ensure_ascii=False, indent=2)
+        
+        return jsonify({
+            'id': doc_id,
+            'length': len(original_content),
+            'full_content': original_content,
+            'source_badge': source_badge,
+            'source_file': source_file,
+            'added_by': added_by_display,
+            'added_date': formatted_date,
+            'word_count': word_count,
+            'sentence_count': sentence_count,
+            'line_page_info': line_page_info,
+            'metadata_info': metadata_info
+        })
+        
+    except Exception as e:
+        return jsonify({'error': f'Lỗi server: {str(e)}'}), 500
+
+
 # DATABASE INITIALIZATION
 
 def init_database():
@@ -1248,4 +1391,4 @@ if __name__ == '__main__':
     # Khởi tạo database
     init_database()
 
-    app.run(debug=True, host='0.0.0.0', port=5000)
+    app.run()
