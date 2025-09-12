@@ -212,9 +212,9 @@ def search_documents(query, k=5, similarity_threshold=0.5, source='default'):
             
             extended_content = [original_main_content]
             
-            # Thêm 8 documents tiếp theo (nếu có)
+            # Thêm 4 documents tiếp theo
             doc_idx = result['index']
-            for next_idx in range(doc_idx + 1, min(doc_idx + 9, len(dm.documents))):
+            for next_idx in range(doc_idx + 1, min(doc_idx + 5, len(dm.documents))):
                 if next_idx < len(dm.documents):
                     # Lấy original content nếu có
                     next_content = dm.documents[next_idx]
@@ -225,8 +225,8 @@ def search_documents(query, k=5, similarity_threshold=0.5, source='default'):
             # Nối tất cả thành một chuỗi cho hiển thị
             full_content = " | ".join(extended_content)
             
-            # Tạo nội dung mở rộng cho modal (8 documents + mở rộng đến delimiter)
-            modal_content_list = extended_content.copy()  # Bắt đầu với 8 documents
+            # Tạo nội dung mở rộng cho modal (4 documents + mở rộng đến delimiter)
+            modal_content_list = extended_content.copy()  # Bắt đầu với 4 documents
             
             # Tiếp tục thêm documents từ vị trí thứ 9 đến khi gặp delimiter
             for next_idx in range(doc_idx + 9, min(doc_idx + 50, len(dm.documents))):
@@ -249,9 +249,9 @@ def search_documents(query, k=5, similarity_threshold=0.5, source='default'):
             
             formatted_results.append({
                 'index': result['index'],
-                'content': full_content,  # Nội dung 8 documents như cũ
+                'content': full_content,
                 'main_content': original_main_content,
-                'extended_content': extended_content,  # 8 documents cho hiển thị bên ngoài
+                'extended_content': extended_content,  # 4 documents cho hiển thị bên ngoài
                 'modal_content': modal_content_text,  # Nội dung đầy đủ cho modal (8 docs + mở rộng)
                 'modal_content_list': modal_content_list,  # Danh sách documents cho modal
                 'score': result['score'],
